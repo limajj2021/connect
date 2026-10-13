@@ -1,12 +1,11 @@
 import { PageHeader } from "@/components/page-header";
-import { listContacts } from "@/lib/contacts/queries";
+import { listContactsLite } from "@/lib/contacts/queries";
 import { createMeeting } from "@/lib/meetings/actions";
 
 import { MeetingForm } from "../meeting-form";
 
 export default async function NewMeetingPage() {
-  const contacts = await listContacts();
-  const contactOptions = contacts.map((c) => ({ id: c.id, name: c.name, company: c.company }));
+  const contactOptions = await listContactsLite();
 
   return (
     <div className="flex flex-col">

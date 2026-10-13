@@ -6,7 +6,7 @@ import { QuickAddTaskForm } from "@/components/quick-add-task-form";
 import { ReminderList } from "@/components/reminder-list";
 import { TaskList } from "@/components/task-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { listContacts } from "@/lib/contacts/queries";
+import { listContactsLite } from "@/lib/contacts/queries";
 import { listReminders } from "@/lib/reminders/queries";
 import { listTasks } from "@/lib/tasks/queries";
 import type { FestivalKey, ReminderType, TaskStatus } from "@/types/database";
@@ -32,13 +32,11 @@ export default async function RemindersPage(props: PageProps<"/reminders">) {
       : (typeParam as ReminderType);
   const festivalKey: FestivalKey | undefined = FESTIVAL_KEYS.has(typeParam) ? (typeParam as FestivalKey) : undefined;
 
-  const [reminders, pendingTasks, contacts] = await Promise.all([
+  const [reminders, pendingTasks, contactOptions] = await Promise.all([
     listReminders({ status, reminderType, festivalKey }),
     listTasks({ status: "pending" }),
-    listContacts(),
+    listContactsLite(),
   ]);
-
-  const contactOptions = contacts.map((c) => ({ id: c.id, name: c.name, company: c.company }));
 
   return (
     <div className="flex flex-col">

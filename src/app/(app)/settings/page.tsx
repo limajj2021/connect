@@ -1,18 +1,17 @@
+import { headers } from "next/headers";
 import { Archive, Download, FileSpreadsheet, Mail, Upload } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
+import { AUTH_USER_EMAIL_HEADER } from "@/lib/supabase/middleware";
 
 import { ImportContactsForm } from "./import-contacts-form";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const headerList = await headers();
+  const userEmail = headerList.get(AUTH_USER_EMAIL_HEADER);
 
   return (
     <div className="flex flex-col">
@@ -28,7 +27,7 @@ export default async function SettingsPage() {
             <CardDescription>單一 Email 帳號，禁止公開註冊</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm">{user?.email ?? "未登入"}</p>
+            <p className="text-sm">{userEmail ?? "未登入"}</p>
           </CardContent>
         </Card>
 

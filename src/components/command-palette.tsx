@@ -16,8 +16,10 @@ import type { ContactLite } from "@/lib/contacts/queries";
 
 export const OPEN_COMMAND_PALETTE_EVENT = "open-command-palette";
 
-export function CommandPalette({ contacts }: { contacts: ContactLite[] }) {
+export function CommandPalette() {
   const [open, setOpen] = useState(false);
+  const [contacts, setContacts] = useState<ContactLite[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -37,6 +39,19 @@ export function CommandPalette({ contacts }: { contacts: ContactLite[] }) {
       window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, handleOpenEvent);
     };
   }, []);
+
+  useEffect(() => {
+    // Fetch the contact list only once, the first time the palette actually
+    // opens — not on every page load — so the command palette's data doesn't
+    // add a Supabase round trip to every single navigation in the app.
+    if (!open || loaded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- guards against re-fetching on every open, not a render-cascade
+    setLoaded(true);
+    fetch("/api/contacts-lite")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ContactLite[]) => setContacts(data))
+      .catch(() => setContacts([]));
+  }, [open, loaded]);
 
   function go(path: string) {
     setOpen(false);

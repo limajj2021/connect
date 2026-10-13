@@ -1,20 +1,18 @@
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
-import { listContacts } from "@/lib/contacts/queries";
+import { listContactsLite } from "@/lib/contacts/queries";
 import { getMeeting } from "@/lib/meetings/queries";
 
 import { MeetingDetailClient } from "./meeting-detail-client";
 
 export default async function MeetingDetailPage(props: PageProps<"/records/meetings/[id]">) {
   const { id } = await props.params;
-  const [meeting, contacts] = await Promise.all([getMeeting(id), listContacts()]);
+  const [meeting, contactOptions] = await Promise.all([getMeeting(id), listContactsLite()]);
 
   if (!meeting) {
     notFound();
   }
-
-  const contactOptions = contacts.map((c) => ({ id: c.id, name: c.name, company: c.company }));
 
   return (
     <div className="flex flex-col">
