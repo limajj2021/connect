@@ -1,36 +1,63 @@
 # Personal CRM
 
-私人人脈管理系統（PRD V1.1）— Next.js + Supabase，單一使用者。
+私人人脈管理系統 — Next.js + Supabase，單一使用者。集中管理商業與私人聯絡人、LINE
+聯繫資訊、會議紀錄，並能匯入 LINE 聊天記錄、以 AI 擷取人物／議題／待辦，再加上三節與
+生日提醒。
 
-## 目前進度：Phase 1（基礎系統）
+## 功能現況
 
 - [x] 登入與權限（Supabase Auth，單一 Email 帳號，禁止公開註冊）
-- [x] 共用 UI Design System（shadcn/ui + Tailwind，支援 Light / Dark）
-- [x] 人脈資料庫（F01）：新增、編輯、刪除、搜尋、篩選、疑似重複提示
-- [x] LINE 搜尋輔助（F02）：複製 LINE 顯示名稱、嘗試開啟 LINE App
-- [x] 手機／桌面響應式版面（側邊欄 + 底部導覽）
-- [x] 全部 14 張資料表的 SQL schema 與 RLS（`supabase/migrations`），含 Phase 2–4 尚未建 UI 的表格
+- [x] 共用 UI Design System（shadcn/ui + Tailwind，支援 Light / Dark，桌面側邊欄 + 手機底部導覽）
+- [x] 人脈資料庫（F01）：新增、編輯、刪除、搜尋、篩選、產業標籤、疑似重複提示
+- [x] LINE 搜尋輔助（F02）：複製 LINE 顯示名稱、嘗試開啟 LINE App、開啟 LINE 連結
+- [x] 會議紀錄（F03）：建立、編輯、多人脈關聯、可直接產生後續待辦
+- [x] 待辦事項：建立、完成／略過、與人脈或會議關聯
+- [x] 三節／生日／自訂提醒（F04/F11）：依農曆換算春節、端午、中秋日期，可產生本年度提醒、
+      批次查看、Email 通知（需設定 Resend）
+- [x] LINE TXT 聊天記錄匯入（F05/F08）：上傳、本機即時預覽解析結果、參與者對應人脈、
+      檔案雜湊與跨批次訊息去重、原始檔存放於私有 Storage bucket
+- [x] AI 聊天內容分析（F06/F09）：可替換的 AI 供應商介面、結構化 JSON 擷取（人物／公司／
+      討論議題／重要資訊／日期／待辦）、分段處理長對話、逐筆核准／編輯／拒絕、核准後寫入
+      人脈或建立待辦
+- [x] 聊天紀錄搜尋與檢視（F07/F10）：關鍵字、日期範圍篩選，由 AI 擷取結果可直接跳轉到原始訊息
+- [x] 首頁儀表板：待聯繫提醒、待辦事項、近期人脈、最近會議、快速新增/匯入
+- [x] 命令選單（⌘K / Ctrl+K）：跳轉頁面、搜尋人脈、快速操作
+- [x] 資料匯入匯出（F13）：聯絡人 CSV／XLSX 匯入、聯絡人 CSV 匯出、含原始聊天檔的完整 ZIP 匯出
+- [x] 全部 14 張資料表的 SQL schema 與 Row Level Security（`supabase/migrations`）
+- [x] 自動化測試：LINE 聊天記錄解析器、農曆節日換算、AI 擷取結構化 schema、CSV 匯出工具
 
-尚未實作（依 PRD 第 8 節開發優先順序）：
+## 技術選型：為什麼不直接採用參考專案
 
-- Phase 2：會議紀錄、待辦事項、三節／生日／自訂提醒、Email 通知
-- Phase 3：LINE TXT 聊天匯入、AI 擷取與審核、聊天紀錄搜尋
-- Phase 4：資料匯入匯出、備份驗證、大量資料效能測試
+開發前依指示檢視了六個開源專案；結論是沿用既有的 Next.js + Supabase 架構繼續開發，不以任何一個作為基底：
 
-`首頁`、`紀錄`、`提醒`、`設定` 頁面目前以空狀態呈現尚未建置的功能，`人脈` 頁面與詳情頁已可完整使用。
+| 專案 | 授權 | 技術棧 | 不採用原因 |
+| --- | --- | --- | --- |
+| `michellzappa/core-oss` | MIT | Next.js + Supabase + shadcn（與本專案相同） | 僅 4 次 commit，資料模型是 Organizations／Offers／Projects 的 B2B 銷售 CRM，與聯絡人／聊天知識庫的需求不符，可沿用的成熟程式碼有限 |
+| `twentyhq/twenty` | 見專案 LICENSE | NestJS + BullMQ + Redis + GraphQL + Nx monorepo | 多租戶 SaaS 等級架構，與「單一開發者可維護」「不引入不必要的基礎設施」要求相反 |
+| `moritzWa/orbit` | MIT | Deno + SQLite + React | 產品概念（個人 CRM、去重、許久未聯繫提醒）值得參考，但技術棧（Deno/SQLite）與本專案不相容，且僅 5 次 commit |
+| `naiba/bonds` | Business Source License 1.1 | Go + React | BSL 限制商業使用與代管服務、4 年後轉 AGPL，且後端為 Go，與本專案堆疊不相容 |
+| `monicahq/monica` | AGPL-3.0 | PHP (Laravel) | 成熟的個人 CRM 資料模型可作為驗證參考，但 AGPL 與 PHP 均與本專案不相容，不適合複製程式碼 |
+| `meyfa/line-chat-parser` | MIT | Node.js（無型別） | 專案已於 2024/7 封存（archived），無 TypeScript 型別，且格式假設非針對台灣繁體中文 LINE 匯出（多行訊息、上午/下午時間格式、日期分隔行等），改為自行實作並撰寫單元測試 |
 
 ## 技術棧
 
-Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · shadcn/ui (Base UI primitives) · Supabase (Postgres + Auth + Storage)
+- **前端**：Next.js 16（App Router）、TypeScript、Tailwind CSS v4、shadcn/ui（Base UI primitives）、cmdk
+- **後端／資料**：Supabase（PostgreSQL、Auth、Storage），Row Level Security
+- **農曆換算**：lunar-javascript
+- **Email**：Resend
+- **AI**：可替換供應商介面，預設實作呼叫 Anthropic Messages API
+- **匯入匯出**：papaparse（CSV）、SheetJS/xlsx（經由 cdn.sheetjs.com 安裝，見下方安全性說明）、JSZip
+- **測試**：Vitest
 
 ## 開始使用
 
 1. 建立 Supabase 專案。
 2. 在 SQL Editor 依序執行 `supabase/migrations/0001_init.sql`、`0002_storage.sql`。
 3. 在 Authentication → Users 手動建立唯一的擁有者帳號（Email + 密碼）。
-4. 複製 `.env.example` 為 `.env.local` 並填入：
+4. 複製 `.env.example` 為 `.env.local` 並至少填入：
    - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Project Settings → API）
    - `OWNER_EMAIL`（必須與步驟 3 建立的帳號一致）
+   - 其餘變數（Email、AI）為選填，缺少時相關功能會顯示明確的「尚未設定」訊息而非報錯
 5. 安裝依賴並啟動開發伺服器：
 
    ```bash
@@ -45,7 +72,53 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · shadcn/ui (Base UI p
 - `npm run dev` — 開發伺服器
 - `npm run build` — production build
 - `npm run lint` — ESLint
+- `npm test` — Vitest 單元測試
+
+## 部署
+
+本專案設計為部署在 Vercel：
+
+1. 將此 repository 連接至 Vercel 專案。
+2. 在 Vercel 專案設定中填入 `.env.example` 所列的環境變數（Production 與 Preview 皆需要）。
+3. 部署後，三節／生日提醒與到期 Email 通知目前透過「提醒」頁面的按鈕手動觸發
+   （`產生本年度提醒`、`寄送到期通知`）；若要完全自動化，建議另外設定 Vercel Cron（或
+   Supabase Scheduled Functions）定期呼叫對應的 Server Action 或新增一組 API Route 包裝它們。
+4. Supabase 專案本身的每日備份請在 Supabase Dashboard → Database → Backups 開啟（依方案而定）。
 
 ## 資料庫
 
-所有資料表皆以 `owner_id` 搭配 Row Level Security 限制為單一擁有者存取（見 `supabase/migrations/0001_init.sql`）。原始 LINE 聊天檔規劃儲存在私有的 `chat-imports` Storage bucket（`0002_storage.sql`），依使用者 UID 分資料夾並以 RLS 限制存取。
+所有資料表皆以 `owner_id` 搭配 Row Level Security 限制為單一擁有者存取（見
+`supabase/migrations/0001_init.sql`）。原始 LINE 聊天檔儲存在私有的 `chat-imports` Storage
+bucket（`0002_storage.sql`），依使用者 UID 分資料夾並以 RLS 限制存取，僅能由擁有者的已驗證
+工作階段讀取、上傳、刪除。
+
+## 安全性考量
+
+- 僅限單一已知帳號登入（無公開註冊），所有資料表與 Storage bucket 皆有 RLS。
+- 伺服器端的 Supabase 用戶端一律帶入當前使用者的 JWT／cookie，絕不使用 service role key
+  繞過 RLS；`SUPABASE_SERVICE_ROLE_KEY` 僅保留給未來背景工作腳本使用，目前未在應用程式碼中使用。
+- AI 與 Email 的 API 金鑰只存在於伺服器環境變數，從未傳遞到瀏覽器。
+- 聊天內容一律視為不可信輸入：AI 擷取結果需使用者逐筆核准才會寫入人脈資料／建立待辦，
+  絕不自動覆蓋既有欄位值（只會補齊原本是空值的欄位）。
+- 上傳檔案有副檔名與檔案大小限制（聊天匯入 .txt ≤ 15MB，聯絡人匯入 .csv/.xlsx ≤ 10MB）。
+- `xlsx` 套件改以 SheetJS 官方 CDN（`cdn.sheetjs.com`）安裝，而非 npm registry 上版本較舊、
+  已知有 Prototype Pollution／ReDoS 漏洞的版本（npm 上的 `xlsx` 套件長期未修補，SheetJS
+  官方建議直接從其 CDN 安裝）；`package.json` 中 `xlsx` 的版本來源即反映此作法。
+
+## 已知限制
+
+- **本機未連接真實 Supabase／AI／Email 服務**：所有功能皆已完整實作並通過 `next build` /
+  `tsc` / `eslint` / `vitest`，但由於此開發環境沒有可用的 Supabase 專案、Anthropic API 金鑰
+  或 Resend 帳號，無法實際跑過「登入 → 建立人脈 → 匯入聊天 → AI 擷取 → 核准 → 提醒 → Email」
+  的完整端對端流程。請依「開始使用」設定好服務後驗證。
+- **AI 分析為同步處理、無背景佇列**：長對話會在單次請求內分段（chunk）呼叫 AI 並即時寫入
+  資料庫，每個分段處理完成即標記為已分析，因此中途失敗可安全重試（只會處理尚未分析的訊息），
+  但沒有真正的背景工作佇列；非常大量的訊息可能受限於單次請求的執行時間。
+- **AI 月費用上限尚未強制執行**：`app_settings.ai_monthly_budget_cents` 僅為儲存欄位，目前
+  沒有在呼叫 AI 前檢查實際花費並擋下超額呼叫。
+- **提醒／Email 通知仍為手動觸發**：需在「提醒」頁面手動點擊「產生本年度提醒」與「寄送到期
+  通知」，或自行建立排程呼叫對應邏輯（見「部署」一節）。
+- **未進行完整無障礙（a11y）審查**：元件多半繼承 shadcn/ui 既有的鍵盤與 ARIA 支援，但未逐頁
+  以螢幕閱讀器驗證。
+- **未撰寫端對端（E2E）測試**：自動化測試涵蓋可獨立驗證的業務邏輯（解析器、節日換算、AI
+  擷取 schema、CSV 匯出），但沒有 Playwright/Cypress 之類需要真正資料庫與瀏覽器的測試。

@@ -202,6 +202,10 @@ create table public.chat_messages (
   sequence_no int not null,
   raw_line_ref int,
   dedupe_hash text,
+  -- Pre-seeded true at import time when this exact message (by dedupe_hash) was
+  -- already covered by a completed analysis run on an earlier import of the same
+  -- chat, so the AI pipeline never re-extracts the same topics/tasks twice.
+  is_analyzed boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -216,6 +220,7 @@ create policy "chat_messages_owner_all" on public.chat_messages
 
 create index chat_messages_import_seq_idx on public.chat_messages (chat_import_id, sequence_no);
 create index chat_messages_dedupe_idx on public.chat_messages (chat_import_id, dedupe_hash);
+create index chat_messages_unanalyzed_idx on public.chat_messages (chat_import_id, is_analyzed);
 
 -- ---------------------------------------------------------------------------
 -- chat_analysis_runs
@@ -323,6 +328,7 @@ create table public.reminders (
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- Festival reminders are unique per contact/festival/year (festival_key is non-null here).
   unique (contact_id, reminder_type, festival_key, occurrence_year)
 );
 
@@ -332,6 +338,12 @@ create policy "reminders_owner_all" on public.reminders
   for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 create index reminders_owner_status_due_idx on public.reminders (owner_id, status, due_date);
+
+-- Birthday reminders have no festival_key, so the table-level unique constraint above
+-- (which treats NULL festival_key as distinct every time) would never dedupe them;
+-- a partial unique index scoped to reminder_type = 'birthday' closes that gap.
+create unique index reminders_birthday_contact_year_idx on public.reminders (contact_id, occurrence_year)
+  where reminder_type = 'birthday';
 
 create trigger reminders_set_updated_at
   before update on public.reminders

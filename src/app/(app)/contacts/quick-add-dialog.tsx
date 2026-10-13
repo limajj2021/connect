@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useActionState, useEffect, useState } from "react";
 import { UserPlus } from "lucide-react";
 
 import { quickAddContact, type ActionState } from "@/lib/contacts/actions";
@@ -20,8 +21,19 @@ import { Label } from "@/components/ui/label";
 const initialState: ActionState = {};
 
 export function QuickAddDialog() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(quickAddContact, initialState);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- open the dialog once when arriving via the ⌘K "新增人脈" action
+      setOpen(true);
+      router.replace("/contacts");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

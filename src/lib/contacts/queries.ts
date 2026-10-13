@@ -11,6 +11,30 @@ export interface ContactFilters {
   location?: string;
 }
 
+export interface ContactLite {
+  id: string;
+  name: string;
+  company: string | null;
+}
+
+export async function listContactsLite(): Promise<ContactLite[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("contacts").select("id, name, company").order("name");
+  if (error) throw error;
+  return (data ?? []) as ContactLite[];
+}
+
+export async function listRecentContacts(limit: number): Promise<ContactRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as ContactRow[];
+}
+
 export interface ContactWithIndustries extends ContactRow {
   industries: string[];
 }

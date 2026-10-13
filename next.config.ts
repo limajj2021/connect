@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // data), so there is nothing worth statically prerendering — disable Cache
   // Components instead of threading Suspense boundaries through pages that are
   // dynamic by design.
+  experimental: {
+    serverActions: {
+      // LINE chat exports (F05) can run several MB for long-running conversations.
+      bodySizeLimit: "15mb",
+    },
+  },
   turbopack: {
     rules: {
       "*.css": {

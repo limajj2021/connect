@@ -119,6 +119,7 @@ export interface ChatMessageRow {
   sequence_no: number;
   raw_line_ref: number | null;
   dedupe_hash: string | null;
+  is_analyzed: boolean;
   created_at: string;
 }
 

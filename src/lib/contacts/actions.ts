@@ -12,7 +12,7 @@ export interface ActionState {
   fieldErrors?: Record<string, string>;
 }
 
-async function syncContactIndustries(contactId: string, industryNames: string[]) {
+export async function syncContactIndustries(contactId: string, industryNames: string[]) {
   const supabase = await createClient();
   const names = [...new Set(industryNames.map((n) => n.trim()).filter(Boolean))];
 

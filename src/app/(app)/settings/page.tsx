@@ -1,10 +1,12 @@
-import { Download, Mail, Upload } from "lucide-react";
+import { Archive, Download, FileSpreadsheet, Mail, Upload } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+
+import { ImportContactsForm } from "./import-contacts-form";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -46,11 +48,16 @@ export default async function SettingsPage() {
               <Download className="size-4" />
               資料匯出
             </CardTitle>
-            <CardDescription>匯出聯絡人 CSV，或包含完整資料的 ZIP／JSON</CardDescription>
+            <CardDescription>匯出聯絡人 CSV，或包含完整資料與原始聊天檔的 ZIP</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button variant="outline" disabled>
-              即將推出（Phase 4）
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="outline" render={<a href="/api/export/contacts" />}>
+              <FileSpreadsheet className="size-4" />
+              匯出聯絡人 CSV
+            </Button>
+            <Button variant="outline" render={<a href="/api/export/full" />}>
+              <Archive className="size-4" />
+              匯出完整資料 ZIP
             </Button>
           </CardContent>
         </Card>
@@ -61,12 +68,10 @@ export default async function SettingsPage() {
               <Upload className="size-4" />
               聯絡人匯入
             </CardTitle>
-            <CardDescription>自 CSV、XLSX 匯入聯絡人</CardDescription>
+            <CardDescription>自 CSV、XLSX 匯入聯絡人（僅需「姓名」欄位必填）</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" disabled>
-              即將推出（Phase 4）
-            </Button>
+            <ImportContactsForm />
           </CardContent>
         </Card>
       </div>

@@ -1,13 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, BellRing, CalendarClock, MessageSquareText } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarPlus, ListTodo, MessageSquareText, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { QuickAddTaskForm } from "@/components/quick-add-task-form";
+import { TaskList } from "@/components/task-list";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { listChatImportsForContact } from "@/lib/chat-import/queries";
 import { findPotentialDuplicates, getContact, listIndustryNames } from "@/lib/contacts/queries";
+import { listMeetingsForContact } from "@/lib/meetings/queries";
+import { listTasksForContact } from "@/lib/tasks/queries";
 
 import { ContactDetailClient } from "./contact-detail-client";
+import { MeetingList } from "../../records/meeting-list";
+import { ChatImportList } from "../../records/chat-import-list";
 
 export default async function ContactDetailPage(props: PageProps<"/contacts/[id]">) {
   const { id } = await props.params;
@@ -18,7 +26,12 @@ export default async function ContactDetailPage(props: PageProps<"/contacts/[id]
     notFound();
   }
 
-  const duplicates = await findPotentialDuplicates(contact.name, contact.id);
+  const [duplicates, meetings, tasks, chatImports] = await Promise.all([
+    findPotentialDuplicates(contact.name, contact.id),
+    listMeetingsForContact(contact.id),
+    listTasksForContact(contact.id),
+    listChatImportsForContact(contact.id),
+  ]);
 
   return (
     <div className="flex flex-col">
@@ -51,27 +64,52 @@ export default async function ContactDetailPage(props: PageProps<"/contacts/[id]
           </TabsContent>
 
           <TabsContent value="meetings" className="pt-4">
-            <EmptyState
-              icon={CalendarClock}
-              title="會議紀錄即將推出"
-              description="Phase 2 將加入會議紀錄功能，可記錄與這位人脈的每次會面。"
-            />
+            {meetings.length === 0 ? (
+              <EmptyState
+                icon={CalendarClock}
+                title="還沒有會議紀錄"
+                description="記錄與這位人脈的每次會面。"
+                action={
+                  <Button size="sm" render={<Link href="/records/meetings/new" />}>
+                    <CalendarPlus className="size-4" />
+                    新增會議
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="-mx-4 md:-mx-6">
+                <MeetingList meetings={meetings} />
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="chats" className="pt-4">
-            <EmptyState
-              icon={MessageSquareText}
-              title="聊天紀錄即將推出"
-              description="Phase 3 將支援匯入 LINE 聊天紀錄，並以 AI 整理重點。"
-            />
+            {chatImports.length === 0 ? (
+              <EmptyState
+                icon={MessageSquareText}
+                title="還沒有相關的聊天紀錄"
+                description="匯入 LINE 聊天記錄並將參與者連結到這位人脈。"
+                action={
+                  <Button size="sm" render={<Link href="/records/chats/import" />}>
+                    <Upload className="size-4" />
+                    匯入聊天紀錄
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="-mx-4 md:-mx-6">
+                <ChatImportList imports={chatImports} />
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="tasks" className="pt-4">
-            <EmptyState
-              icon={BellRing}
-              title="待辦事項即將推出"
-              description="Phase 2 將加入待辦與提醒，協助追蹤後續聯繫事項。"
-            />
+          <TabsContent value="tasks" className="space-y-4 pt-4">
+            <QuickAddTaskForm contactId={contact.id} />
+            {tasks.length === 0 ? (
+              <EmptyState icon={ListTodo} title="還沒有待辦事項" description="新增與這位人脈相關的待辦。" />
+            ) : (
+              <TaskList tasks={tasks} showContact={false} />
+            )}
           </TabsContent>
         </Tabs>
       </div>

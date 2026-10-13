@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
 
 import { signOut } from "@/app/actions";
+import { OPEN_COMMAND_PALETTE_EVENT } from "@/components/command-palette";
 import { NAV_ITEMS } from "@/components/nav-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,21 @@ export function AppSidebar({ userEmail }: { userEmail: string | null }) {
     <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
       <div className="flex h-14 items-center px-4">
         <span className="text-base font-semibold">Personal CRM</span>
+      </div>
+
+      <div className="px-3 pb-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-between text-sm font-normal text-muted-foreground"
+          onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+        >
+          <span className="flex items-center gap-2">
+            <Search className="size-4" />
+            搜尋
+          </span>
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+        </Button>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
