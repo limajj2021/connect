@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listChatExtractions } from "@/lib/ai-extraction/queries";
 import { getChatImport, listChatMessages, listChatParticipants } from "@/lib/chat-import/queries";
+import { formatTaipeiDateTime } from "@/lib/format-date";
 
 import { ChatMessageViewer } from "./chat-message-viewer";
 import { ChatSearchBar } from "./chat-search-bar";
@@ -38,7 +39,7 @@ export default async function ChatImportDetailPage(props: PageProps<"/records/ch
     <div className="flex flex-col">
       <PageHeader
         title={chatImport.source_chat_name ?? chatImport.file_name}
-        description={`匯入於 ${new Date(chatImport.imported_at).toLocaleString("zh-TW")}`}
+        description={`匯入於 ${formatTaipeiDateTime(chatImport.imported_at)}`}
         actions={
           <div className="flex items-center gap-2">
             <RunAnalysisButton chatImportId={chatImport.id} />

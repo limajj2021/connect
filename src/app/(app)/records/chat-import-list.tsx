@@ -3,6 +3,7 @@ import { Calendar, MessageSquareText, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { ChatImportWithContact } from "@/lib/chat-import/queries";
+import { formatTaipeiDate } from "@/lib/format-date";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待處理",
@@ -29,7 +30,7 @@ export function ChatImportList({ imports }: { imports: ChatImportWithContact[] }
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Calendar className="size-3.5" />
-                {new Date(item.imported_at).toLocaleDateString("zh-TW")}
+                {formatTaipeiDate(item.imported_at)}
               </span>
               <span className="flex items-center gap-1">
                 <MessageSquareText className="size-3.5" />

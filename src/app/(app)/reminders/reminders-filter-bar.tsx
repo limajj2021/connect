@@ -32,7 +32,11 @@ export function RemindersFilterBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={status} onValueChange={(v) => updateParam("status", v)}>
+      <Select
+        items={{ pending: "待處理", completed: "已完成", skipped: "已略過", all: "全部狀態" }}
+        value={status}
+        onValueChange={(v) => updateParam("status", v)}
+      >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="狀態" />
         </SelectTrigger>
@@ -44,7 +48,19 @@ export function RemindersFilterBar() {
         </SelectContent>
       </Select>
 
-      <Select value={type} onValueChange={(v) => updateParam("type", v)}>
+      <Select
+        items={{
+          all: "全部類型",
+          chinese_new_year: "春節",
+          dragon_boat: "端午節",
+          mid_autumn: "中秋節",
+          birthday: "生日",
+          custom: "自訂",
+          meeting_followup: "會議後續",
+        }}
+        value={type}
+        onValueChange={(v) => updateParam("type", v)}
+      >
         <SelectTrigger className="w-36">
           <SelectValue placeholder="類型" />
         </SelectTrigger>

@@ -1,4 +1,5 @@
 import type { ChatMessageRow } from "@/types/database";
+import { formatTaipeiDate, formatTaipeiTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 
 const TYPE_PLACEHOLDER_HINT: Partial<Record<string, string>> = {
@@ -11,13 +12,11 @@ const TYPE_PLACEHOLDER_HINT: Partial<Record<string, string>> = {
 };
 
 function formatTime(sentAt: string | null) {
-  if (!sentAt) return "";
-  return new Date(sentAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return sentAt ? formatTaipeiTime(sentAt) : "";
 }
 
 function formatDate(sentAt: string | null) {
-  if (!sentAt) return "";
-  return new Date(sentAt).toLocaleDateString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return sentAt ? formatTaipeiDate(sentAt) : "";
 }
 
 export function ChatMessageViewer({ messages }: { messages: ChatMessageRow[] }) {

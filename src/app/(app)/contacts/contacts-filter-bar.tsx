@@ -67,7 +67,11 @@ export function ContactsFilterBar({ industries }: { industries: string[] }) {
         />
       </div>
 
-      <Select value={roleType} onValueChange={(v) => updateParam("role", v)}>
+      <Select
+        items={{ all: "全部身分", boss: "老闆", non_boss: "非老闆", unclassified: "未分類" }}
+        value={roleType}
+        onValueChange={(v) => updateParam("role", v)}
+      >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="身分" />
         </SelectTrigger>
@@ -79,7 +83,11 @@ export function ContactsFilterBar({ industries }: { industries: string[] }) {
         </SelectContent>
       </Select>
 
-      <Select value={industry} onValueChange={(v) => updateParam("industry", v)}>
+      <Select
+        items={{ all: "全部產業", ...Object.fromEntries(industries.map((ind) => [ind, ind])) }}
+        value={industry}
+        onValueChange={(v) => updateParam("industry", v)}
+      >
         <SelectTrigger className="w-36">
           <SelectValue placeholder="產業" />
         </SelectTrigger>

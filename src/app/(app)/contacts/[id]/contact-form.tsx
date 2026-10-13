@@ -70,7 +70,11 @@ export function ContactForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="role_type">身分</Label>
-          <Select name="role_type" defaultValue={contact.role_type}>
+          <Select
+            name="role_type"
+            items={{ unclassified: "未分類", boss: "老闆", non_boss: "非老闆" }}
+            defaultValue={contact.role_type}
+          >
             <SelectTrigger id="role_type" className="w-full">
               <SelectValue />
             </SelectTrigger>

@@ -43,12 +43,23 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  render,
+  nativeButton,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // `render` in this app is only ever used to make the button act as a link
+  // (`<a>` / next/link's `Link`), never another native `<button>` — so default
+  // `nativeButton` to false whenever `render` is set, unless the caller
+  // overrides it. Without this, Base UI logs a dev warning because it assumes
+  // `render` targets a real button.
+  const resolvedNativeButton = nativeButton ?? (render ? false : undefined)
+
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      render={render}
+      nativeButton={resolvedNativeButton}
       {...props}
     />
   )
