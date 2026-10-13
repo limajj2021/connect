@@ -20,11 +20,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   }
 
   return (
-    <div className="flex min-h-svh">
+    <div className="flex min-h-dvh">
       <AppSidebar userEmail={userEmail} />
-      <div className="flex min-h-svh flex-1 flex-col">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
         <MobileHeader />
-        <main className="flex-1 pb-16 md:pb-0">{children}</main>
+        <main className="min-w-0 flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
         <AppBottomNav />
       </div>
       <CommandPalette />

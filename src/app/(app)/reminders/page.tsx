@@ -52,9 +52,9 @@ export default async function RemindersPage(props: PageProps<"/reminders">) {
       />
 
       <Tabs defaultValue={tabParam} className="px-4 py-4 md:px-6">
-        <TabsList>
-          <TabsTrigger value="reminders">提醒</TabsTrigger>
-          <TabsTrigger value="tasks">待辦事項</TabsTrigger>
+        <TabsList className="w-full md:w-fit">
+          <TabsTrigger className="flex-1 md:flex-none" value="reminders">提醒</TabsTrigger>
+          <TabsTrigger className="flex-1 md:flex-none" value="tasks">待辦事項</TabsTrigger>
         </TabsList>
 
         <TabsContent value="reminders" className="space-y-4 pt-4">

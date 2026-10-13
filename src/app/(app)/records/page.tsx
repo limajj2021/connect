@@ -34,9 +34,9 @@ export default async function RecordsPage() {
       />
 
       <Tabs defaultValue="meetings" className="px-4 py-4 md:px-6">
-        <TabsList>
-          <TabsTrigger value="meetings">會議紀錄</TabsTrigger>
-          <TabsTrigger value="chats">聊天匯入</TabsTrigger>
+        <TabsList className="w-full md:w-fit">
+          <TabsTrigger className="flex-1 md:flex-none" value="meetings">會議紀錄</TabsTrigger>
+          <TabsTrigger className="flex-1 md:flex-none" value="chats">聊天匯入</TabsTrigger>
         </TabsList>
 
         <TabsContent value="meetings" className="pt-4">

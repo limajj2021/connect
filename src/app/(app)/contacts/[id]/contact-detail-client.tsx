@@ -25,12 +25,10 @@ export function ContactDetailClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">{contact.name}</h2>
-        </div>
+      {/* The name is already the page title; this row only carries the actions. */}
+      <div className="flex items-center justify-end gap-2">
         {!editing ? (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <LineContactButton displayName={contact.line_display_name} lineUrl={contact.line_url} />
             <Button type="button" variant="outline" size="icon" onClick={() => setEditing(true)} aria-label="編輯">
               <Pencil className="size-4" />

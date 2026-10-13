@@ -24,11 +24,11 @@ export function CustomReminderForm({ contactOptions }: { contactOptions: Contact
 
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-2">
-      <div className="w-48">
+      <div className="w-full md:w-48">
         <ContactCombobox name="contact_id" options={contactOptions} value={contactId} onChange={setContactId} />
       </div>
-      <Input name="notes" placeholder="提醒內容" required className="min-w-40 flex-1" />
-      <Input name="due_date" type="date" required className="w-36" />
+      <Input name="notes" placeholder="提醒內容" required className="w-full md:w-auto md:min-w-40 md:flex-1" />
+      <Input name="due_date" type="date" required className="w-full md:w-36" />
       <Button type="submit" size="sm" disabled={isPending}>
         <Plus className="size-4" />
         新增提醒

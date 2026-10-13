@@ -57,7 +57,7 @@ export function ContactsFilterBar({ industries }: { industries: string[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-3 md:px-6">
-      <div className="relative min-w-48 flex-1">
+      <div className="relative basis-full md:min-w-48 md:flex-1 md:basis-0">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={q}
@@ -72,7 +72,7 @@ export function ContactsFilterBar({ industries }: { industries: string[] }) {
         value={roleType}
         onValueChange={(v) => updateParam("role", v)}
       >
-        <SelectTrigger className="w-32">
+        <SelectTrigger className="min-w-0 flex-1 md:w-32 md:flex-none">
           <SelectValue placeholder="身分" />
         </SelectTrigger>
         <SelectContent>
@@ -88,7 +88,7 @@ export function ContactsFilterBar({ industries }: { industries: string[] }) {
         value={industry}
         onValueChange={(v) => updateParam("industry", v)}
       >
-        <SelectTrigger className="w-36">
+        <SelectTrigger className="min-w-0 flex-1 md:w-36 md:flex-none">
           <SelectValue placeholder="產業" />
         </SelectTrigger>
         <SelectContent>

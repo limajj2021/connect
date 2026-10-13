@@ -55,11 +55,11 @@ export default async function ContactDetailPage(props: PageProps<"/contacts/[id]
         ) : null}
 
         <Tabs defaultValue="profile">
-          <TabsList>
-            <TabsTrigger value="profile">基本資料</TabsTrigger>
-            <TabsTrigger value="meetings">會議紀錄</TabsTrigger>
-            <TabsTrigger value="chats">聊天紀錄</TabsTrigger>
-            <TabsTrigger value="tasks">待辦</TabsTrigger>
+          <TabsList className="w-full md:w-fit">
+            <TabsTrigger className="flex-1 md:flex-none" value="profile">基本資料</TabsTrigger>
+            <TabsTrigger className="flex-1 md:flex-none" value="meetings">會議紀錄</TabsTrigger>
+            <TabsTrigger className="flex-1 md:flex-none" value="chats">聊天紀錄</TabsTrigger>
+            <TabsTrigger className="flex-1 md:flex-none" value="tasks">待辦</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="pt-4">

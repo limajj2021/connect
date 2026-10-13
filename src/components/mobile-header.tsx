@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export function MobileHeader() {
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:hidden">
+    <header className="sticky top-0 z-40 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center justify-between border-b bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
       <span className="text-base font-semibold">Personal CRM</span>
       <div className="flex items-center gap-1">
         <Button
