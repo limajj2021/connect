@@ -14,7 +14,7 @@ function isPublicPath(pathname: string) {
 // Header carrying the already-validated user's email forward to Server
 // Components, so layouts/pages don't have to pay for a second round trip to
 // Supabase Auth to re-derive what middleware just verified. Only ever set
-// here, from a value `auth.getUser()` itself returned — a request header of
+// here, from claims `auth.getClaims()` itself verified — a request header of
 // this name arriving from outside is always overwritten below (or stripped,
 // when there's no verified user), so it can't be spoofed by a caller.
 export const AUTH_USER_EMAIL_HEADER = "x-personal-crm-user-email";
@@ -38,9 +38,16 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() verifies the access token's signature locally against the
+  // project's asymmetric (ES256) JWT signing keys — the JWKS is fetched once
+  // and cached per server instance — so the common case costs zero network
+  // round trips. getUser() would instead call Supabase Auth on *every*
+  // request, which was the single biggest per-navigation cost. An expired
+  // token is still refreshed here (one call, roughly once an hour), and every
+  // data query is independently enforced by RLS on the database side.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  const user = claims?.sub ? { id: claims.sub, email: typeof claims.email === "string" ? claims.email : null } : null;
 
   const { pathname } = request.nextUrl;
 

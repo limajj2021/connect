@@ -20,18 +20,21 @@ import { ChatImportList } from "../../records/chat-import-list";
 export default async function ContactDetailPage(props: PageProps<"/contacts/[id]">) {
   const { id } = await props.params;
 
-  const [contact, industrySuggestions] = await Promise.all([getContact(id), listIndustryNames()]);
+  // Everything keyed only by the id starts at once; just the duplicate check
+  // has to wait for the contact's name.
+  const [contact, industrySuggestions, meetings, tasks, chatImports] = await Promise.all([
+    getContact(id),
+    listIndustryNames(),
+    listMeetingsForContact(id),
+    listTasksForContact(id),
+    listChatImportsForContact(id),
+  ]);
 
   if (!contact) {
     notFound();
   }
 
-  const [duplicates, meetings, tasks, chatImports] = await Promise.all([
-    findPotentialDuplicates(contact.name, contact.id),
-    listMeetingsForContact(contact.id),
-    listTasksForContact(contact.id),
-    listChatImportsForContact(contact.id),
-  ]);
+  const duplicates = await findPotentialDuplicates(contact.name, contact.id);
 
   return (
     <div className="flex flex-col">

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { parseLineChatExport, type ParsedMessage } from "@/lib/chat-import/line-parser";
 import { sha256Hex } from "@/lib/chat-import/hash";
 import {
@@ -74,9 +74,7 @@ export async function importChat(_prev: ImportActionState, formData: FormData): 
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser(supabase);
   if (!user) {
     return { error: "請重新登入後再試一次" };
   }

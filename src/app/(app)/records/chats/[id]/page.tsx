@@ -20,18 +20,17 @@ export default async function ChatImportDetailPage(props: PageProps<"/records/ch
   const { id } = await props.params;
   const searchParams = await props.searchParams;
 
-  const chatImport = await getChatImport(id);
-  if (!chatImport) notFound();
-
   const q = typeof searchParams.q === "string" ? searchParams.q : undefined;
   const dateFrom = typeof searchParams.from === "string" ? searchParams.from : undefined;
   const dateTo = typeof searchParams.to === "string" ? searchParams.to : undefined;
 
-  const [participants, messages, extractions] = await Promise.all([
+  const [chatImport, participants, messages, extractions] = await Promise.all([
+    getChatImport(id),
     listChatParticipants(id),
     listChatMessages(id, { q, dateFrom, dateTo }),
     listChatExtractions(id),
   ]);
+  if (!chatImport) notFound();
 
   const pendingCount = extractions.filter((e) => e.review_status === "pending").length;
 
