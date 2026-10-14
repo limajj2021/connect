@@ -73,3 +73,18 @@ export async function getMessageContent(messageId: string): Promise<ArrayBuffer>
   if (!res.ok) throw new LineApiError(res.status, await res.text());
   return res.arrayBuffer();
 }
+
+/** Display name of a user who has added the bot (used to recognise "you" in chat exports). */
+export async function getProfileDisplayName(userId: string): Promise<string | null> {
+  const { apiBase, channelAccessToken } = lineConfig();
+  try {
+    const res = await fetch(`${apiBase}/v2/bot/profile/${encodeURIComponent(userId)}`, {
+      headers: { authorization: `Bearer ${channelAccessToken}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { displayName?: string };
+    return json.displayName ?? null;
+  } catch {
+    return null;
+  }
+}

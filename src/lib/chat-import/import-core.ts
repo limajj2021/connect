@@ -43,6 +43,12 @@ export async function importLineChatFile(opts: {
   ownerId: string;
   fileName: string;
   buffer: ArrayBuffer;
+  /**
+   * The exporting user's own sender name(s). LINE writes your messages under
+   * your display name (not "我"), so callers that know it should pass it —
+   * statically or derived from the parsed chat.
+   */
+  ownerNames?: string[] | ((parsed: ParsedChat) => string[]);
   /** Decides link/create/skip per participant once the file is parsed. */
   resolveMapping: (participants: string[]) => Promise<ParticipantMapping> | ParticipantMapping;
 }): Promise<ChatImportResult> {
@@ -65,7 +71,12 @@ export async function importLineChatFile(opts: {
     return { ok: false, error: "無法解析任何訊息，請確認檔案是否為 LINE 聊天記錄 TXT 匯出檔" };
   }
 
-  const realParticipants = parsed.participants.filter((p) => p !== OWNER_SENDER_LABEL);
+  const ownerNames = new Set(
+    [OWNER_SENDER_LABEL, ...(typeof opts.ownerNames === "function" ? opts.ownerNames(parsed) : (opts.ownerNames ?? []))]
+      .map((n) => n.trim())
+      .filter(Boolean),
+  );
+  const realParticipants = parsed.participants.filter((p) => !ownerNames.has(p.trim()));
   const chatType: "individual" | "group" = realParticipants.length > 1 ? "group" : "individual";
   const mapping = await opts.resolveMapping(realParticipants);
 

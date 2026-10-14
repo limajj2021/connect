@@ -98,3 +98,12 @@ describe("chat-style phrasing", () => {
     expect(extractFromCommand("X WhatsApp 是 +886 955 111 222").whatsapp_phone).toBe("+886955111222");
   });
 });
+
+describe("international numbers in chats", () => {
+  it("keeps every digit and recognises English phrasing", () => {
+    const d = extractFromCommand("X Hi! My WhatsApp is +91 98765 43210");
+    expect(d.whatsapp_phone).toBe("+919876543210");
+    expect(extractFromCommand("X call me +1 415 555 0100").phone).toBe("+14155550100");
+    expect(extractFromCommand("X LINE ID is kenny_88").line_id).toBe("kenny_88");
+  });
+});

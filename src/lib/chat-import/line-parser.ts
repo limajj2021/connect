@@ -1,7 +1,9 @@
 /**
- * Parser for LINE's exported chat .txt files (Taiwan Traditional-Chinese
- * locale, mobile-app export format: tab-separated `HH:mm\t<sender>\t<text>`
- * message lines under full-width-parenthesis date headers).
+ * Parser for LINE's exported chat .txt files: tab-separated
+ * `<time>\t<sender>\t<text>` message lines under date header lines. The app's
+ * UI language changes the header, date and time formats, so this accepts the
+ * Traditional-Chinese, English and Japanese variants (24h or AM/PM times,
+ * Y/M/D or M/D/Y dates).
  *
  * Pure function, no I/O — safe to unit test and to run before anything is
  * written to the database.
@@ -44,10 +46,40 @@ export interface ParsedChat {
   warnings: string[];
 }
 
-const DATE_HEADER_RE = /^(\d{4})[/.](\d{1,2})[/.](\d{1,2})\s*[(（].?[)）]?\s*$/u;
-const MESSAGE_START_RE = /^(\d{1,2}):(\d{2})\t(.*)$/;
-const HEADER_LINE_RE = /^\[LINE\]\s*(?:與\s*)?[「"]?(.+?)[」"]?\s*(?:的聊天(?:記錄|室)?)?$/u;
-const SAVED_AT_RE = /^儲存日期[:：]/u;
+// "[LINE] 與「X」的聊天記錄" / "[LINE] Chat history with X" / "[LINE] Chat with X" /
+// "[LINE] Chat history in "X"" (groups) / "[LINE] Xとのトーク履歴"
+const HEADER_LINE_RE =
+  /^\[LINE\]\s*(?:與\s*|Chat\s+(?:history\s+)?(?:with|in)\s+)?[「"“]?(.+?)[」"”]?\s*(?:的聊天(?:記錄|室)?|とのトーク履歴|のトーク履歴)?$/iu;
+const SAVED_AT_RE = /^(?:儲存日期|保存日時|Saved on)\s*[:：]?/iu;
+// A message line: optional 上午/下午/AM/PM marker before or after the time, then a tab.
+const MESSAGE_START_RE = /^(?:(上午|下午|午前|午後|AM|PM)\s*)?(\d{1,2}):(\d{2})(?:\s*(AM|PM|am|pm))?\t(.*)$/;
+const YMD_RE = /(\d{4})\s*[/.\-年]\s*(\d{1,2})\s*[/.\-月]\s*(\d{1,2})/;
+const MDY_RE = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+// What may surround the date on a header line: weekday names, brackets, commas.
+const DATE_DECORATION_RE =
+  /^[\s,.()（）日]*(?:(?:週|周|星期)?[一二三四五六日天]|[月火水木金土日](?:曜日)?|(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?)?[\s,.()（）日]*$/i;
+
+/** Returns YYYY-MM-DD when the line is nothing but a date header, else null. */
+function parseDateHeader(line: string): string | null {
+  if (line.includes("\t") || line.length > 40) return null;
+  const ymd = YMD_RE.exec(line);
+  const mdy = ymd ? null : MDY_RE.exec(line);
+  const match = ymd ?? mdy;
+  if (!match) return null;
+  const rest = line.replace(match[0], " ");
+  if (!rest.split(/\s+/).every((part) => part === "" || DATE_DECORATION_RE.test(part))) return null;
+  const [y, m, d] = ymd ? [match[1], match[2], match[3]] : [match[3], match[1], match[2]];
+  if (Number(m) < 1 || Number(m) > 12 || Number(d) < 1 || Number(d) > 31) return null;
+  return `${y}-${pad2(Number(m))}-${pad2(Number(d))}`;
+}
+
+function to24h(hourText: string, minute: string, marker: string | undefined): string {
+  let hour = Number(hourText);
+  const m = marker?.toUpperCase();
+  if ((m === "PM" || m === "下午" || m === "午後") && hour < 12) hour += 12;
+  if ((m === "AM" || m === "上午" || m === "午前") && hour === 12) hour = 0;
+  return `${pad2(hour)}:${minute}`;
+}
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -66,12 +98,12 @@ function fnv1a(input: string): string {
 function classifyMessageType(sender: string | null, text: string): ParsedMessageType {
   if (sender === null) return "system";
   const trimmed = text.trim();
-  if (trimmed === "[貼圖]") return "sticker";
-  if (trimmed === "[照片]") return "image";
-  if (trimmed === "[影片]") return "video";
-  if (trimmed === "[語音訊息]") return "audio";
-  if (trimmed.startsWith("[檔案]")) return "file";
-  if (trimmed.startsWith("☎") || trimmed.startsWith("通話時間") || trimmed.startsWith("通話")) return "call";
+  if (/^\[(?:貼圖|Sticker|スタンプ)\]$/i.test(trimmed)) return "sticker";
+  if (/^\[(?:照片|Photo|写真|相簿|Album)s?\]$/i.test(trimmed)) return "image";
+  if (/^\[(?:影片|Video|動画)\]$/i.test(trimmed)) return "video";
+  if (/^\[(?:語音訊息|Voice message|ボイスメッセージ)\]$/i.test(trimmed)) return "audio";
+  if (/^\[(?:檔案|File|ファイル)\]/i.test(trimmed)) return "file";
+  if (/^(?:☎|通話時間|通話|Call time|Missed call|Canceled call)/i.test(trimmed)) return "call";
   return "text";
 }
 
@@ -128,18 +160,20 @@ export function parseLineChatExport(raw: string): ParsedChat {
     if (line.trim() === "" && open === null) return;
     if (SAVED_AT_RE.test(line.trim()) && open === null) return;
 
-    const dateMatch = DATE_HEADER_RE.exec(line.trim());
-    if (dateMatch) {
+    // A date header only counts between messages or after a blank line, so a
+    // message body line that happens to be a date isn't mistaken for one.
+    const headerDate = parseDateHeader(line.trim());
+    const previousBlank = index === 0 || lines[index - 1].trim() === "";
+    if (headerDate && (open === null || previousBlank)) {
       flush();
-      const [, y, m, d] = dateMatch;
-      currentDate = `${y}-${pad2(Number(m))}-${pad2(Number(d))}`;
+      currentDate = headerDate;
       return;
     }
 
     const messageMatch = MESSAGE_START_RE.exec(line);
     if (messageMatch) {
       flush();
-      const [, hh, mm, rest] = messageMatch;
+      const [, markerBefore, hh, mm, markerAfter, rest] = messageMatch;
       if (!currentDate) {
         warnings.push(`第 ${lineNo} 行：找不到日期標頭，已略過`);
         return;
@@ -161,7 +195,7 @@ export function parseLineChatExport(raw: string): ParsedChat {
       open = {
         sequenceNo,
         date: currentDate,
-        time: `${hh.padStart(2, "0")}:${mm}`,
+        time: to24h(hh, mm, markerBefore ?? markerAfter),
         sender,
         textLines: [text],
         rawLineRef: lineNo,

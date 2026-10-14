@@ -102,3 +102,51 @@ describe("parseLineChatExport", () => {
     expect(result.messages).toHaveLength(2);
   });
 });
+
+describe("other LINE UI languages", () => {
+  it("parses an English export with AM/PM times and M/D/Y dates", () => {
+    const raw = [
+      "[LINE] Chat history with Kenny 吳副 @印度班加*",
+      "Saved on: 10/15/2026, 12:05 AM",
+      "",
+      "Tue, 10/13/2026",
+      "9:05 AM\tKenny 吳副 @印度班加*\tHi! My number is 0912-345-678",
+      "12:30 PM\tJamie\tGreat, talk soon",
+      "",
+      "Wed, 10/14/2026",
+      "12:01 AM\tKenny 吳副 @印度班加*\t[Sticker]",
+      "11:59 PM\tJamie\tsee you",
+      "next week",
+    ].join("\n");
+    const result = parseLineChatExport(raw);
+    expect(result.chatName).toBe("Kenny 吳副 @印度班加*");
+    expect(result.participants).toEqual(["Kenny 吳副 @印度班加*", "Jamie"]);
+    expect(result.messages.map((m) => [m.date, m.time, m.messageType])).toEqual([
+      ["2026-10-13", "09:05", "text"],
+      ["2026-10-13", "12:30", "text"],
+      ["2026-10-14", "00:01", "sticker"],
+      ["2026-10-14", "23:59", "text"],
+    ]);
+    expect(result.messages[3].text).toBe("see you\nnext week");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("parses Y/M/D English headers, 24h times and the 'Chat with' title", () => {
+    const raw = ["[LINE] Chat with Amy", "Saved on: 2026/10/15 00:05", "", "2026/10/14, Wed", "08:15\tAmy\thello"].join("\n");
+    const result = parseLineChatExport(raw);
+    expect(result.chatName).toBe("Amy");
+    expect(result.messages[0]).toMatchObject({ date: "2026-10-14", time: "08:15", sender: "Amy", text: "hello" });
+  });
+
+  it("parses a Japanese export", () => {
+    const raw = ["[LINE] 田中とのトーク履歴", "保存日時：2026/10/15 00:05", "", "2026/10/14(水)", "午後3:20\t田中\tこんにちは"].join("\n");
+    const result = parseLineChatExport(raw);
+    expect(result.chatName).toBe("田中");
+    expect(result.messages[0]).toMatchObject({ date: "2026-10-14", time: "15:20", sender: "田中" });
+  });
+
+  it("parses Traditional-Chinese 上午/下午 times", () => {
+    const raw = ["[LINE] 與王小明的聊天記錄", "", "2026/10/14（三）", "下午2:05\t王小明\t好"].join("\n");
+    expect(parseLineChatExport(raw).messages[0]).toMatchObject({ time: "14:05", sender: "王小明" });
+  });
+});

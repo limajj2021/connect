@@ -2,7 +2,7 @@ import "server-only";
 
 import { importLineChatFile } from "@/lib/chat-import/import-core";
 import { MAX_IMPORT_FILE_BYTES, type ParticipantMapping } from "@/lib/chat-import/schema";
-import { type LineMessage, getMessageContent, replyOrPush, showLoading } from "@/lib/line/api";
+import { type LineMessage, getMessageContent, getProfileDisplayName, replyOrPush, showLoading } from "@/lib/line/api";
 import { lineConfig } from "@/lib/line/config";
 import { MAIN_QUICK, helpMessages, postback, text, uri } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
@@ -10,8 +10,8 @@ import { isOcrConfigured, ocrImage } from "@/lib/ocr/ocr-space";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
 import { taipeiToday } from "@/lib/format-date";
 
-import { type BotCtx, CONTACT_CARD_COLUMNS, loadSession, updateContact } from "./data";
-import { extractContactFields, extractFromOcr } from "./extract";
+import { type BotCtx, CONTACT_CARD_COLUMNS, createContact, loadSession, updateContact } from "./data";
+import { extractContactFields, extractFromOcr, parseLineDisplayName } from "./extract";
 import { appendToCollect } from "./forward";
 import { type FlowState, createFromScreenshot, handlePostback, handleText } from "./handlers";
 import { parseIntent } from "./intent";
@@ -32,35 +32,71 @@ async function importChatFromLine(ctx: BotCtx, messageId: string, fileName: stri
   const buffer = await getMessageContent(messageId);
   if (buffer.byteLength > MAX_IMPORT_FILE_BYTES) return [text("檔案太大了（上限 15MB）。")];
 
-  // Auto-map participants: exact name / LINE display name → link, otherwise
-  // create a new contact so nobody in the chat is lost.
   const { data: contacts, error } = await ctx.supabase
     .from("contacts")
     .select(CONTACT_CARD_COLUMNS)
     .eq("owner_id", ctx.ownerId);
   if (error) throw error;
+  const all = (contacts ?? []) as ContactForCard[];
   const byName = new Map<string, ContactForCard>();
-  for (const c of (contacts ?? []) as ContactForCard[]) {
+  for (const c of all) {
     byName.set(c.name, c);
     if (c.line_display_name) byName.set(c.line_display_name, c);
   }
+
+  const ownProfileName = await getProfileDisplayName(ctx.lineUserId);
+  const created = new Set<string>();
+  const fuzzyLinked = new Map<string, string>(); // participant → contact name it was matched to
 
   const result = await importLineChatFile({
     supabase: ctx.supabase,
     ownerId: ctx.ownerId,
     fileName,
     buffer,
-    resolveMapping: (participants) => {
+    ownerNames: (parsed) => {
+      const names = ownProfileName ? [ownProfileName] : [];
+      // A 1-on-1 export is titled with the other person's name, so in a
+      // two-person chat whoever isn't in the title is you.
+      const people = parsed.participants.filter((p) => p !== "我");
+      if (parsed.chatName && people.length === 2) {
+        const other = people.find((p) => p === parsed.chatName || parsed.chatName!.includes(p) || p.includes(parsed.chatName!));
+        if (other) names.push(...people.filter((p) => p !== other));
+      }
+      return names;
+    },
+    resolveMapping: async (participants) => {
       const mapping: ParticipantMapping = {};
       for (const name of participants) {
-        const match = byName.get(name);
-        mapping[name] = match ? { action: "link", contactId: match.id } : { action: "create" };
+        const exact = byName.get(name);
+        if (exact) {
+          mapping[name] = { action: "link", contactId: exact.id };
+          continue;
+        }
+        // "Kenny 吳副 @印度班加*" contains the existing contact "Kenny" → same person.
+        const containing = all.filter((c) => c.name.length >= 2 && name.includes(c.name));
+        if (containing.length === 1) {
+          const match = containing[0];
+          mapping[name] = { action: "link", contactId: match.id };
+          fuzzyLinked.set(name, match.name);
+          if (!match.line_display_name) await updateContact(ctx, match.id, { line_display_name: name });
+          continue;
+        }
+        const contact = await createContact(ctx, { ...parseLineDisplayName(name), line_display_name: name });
+        created.add(name);
+        mapping[name] = { action: "link", contactId: contact.id };
       }
       return mapping;
     },
   });
 
   if (!result.ok) {
+    if (result.error.startsWith("無法解析")) {
+      // Keep the file (private bucket) so the format can be supported later.
+      await ctx.supabase.storage
+        .from("chat-imports")
+        .upload(`${ctx.ownerId}/unparsed/${Date.now()}.txt`, buffer, { contentType: "text/plain; charset=utf-8" });
+      console.info("[line-bot] unparsed chat export saved", fileName);
+    }
     return [
       text(
         result.error,
@@ -80,7 +116,7 @@ async function importChatFromLine(ctx: BotCtx, messageId: string, fileName: stri
       .join("\n");
     if (!own) continue;
     const { draft } = extractContactFields(own);
-    const existing = byName.get(participant.name);
+    const existing = all.find((c) => c.id === participant.contactId);
     const patch: Record<string, unknown> = {};
     for (const field of ["phone", "email", "line_id", "wechat_id", "whatsapp_phone"] as const) {
       if (draft[field] && !existing?.[field]) patch[field] = draft[field];
@@ -91,16 +127,18 @@ async function importChatFromLine(ctx: BotCtx, messageId: string, fileName: stri
     }
   }
 
-  const linked = result.participants.filter((p) => p.contactId && !p.created).map((p) => p.name);
-  const created = result.participants.filter((p) => p.created).map((p) => p.name);
+  const linked = result.participants
+    .filter((p) => p.contactId && !created.has(p.name))
+    .map((p) => (fuzzyLinked.has(p.name) ? `${p.name} → ${fuzzyLinked.get(p.name)}` : p.name));
+  const createdNames = [...created];
   const lines = [
     `✅ 已匯入「${result.chatName ?? fileName}」：${result.messageCount} 則訊息（${result.chatType === "group" ? "群組" : "一對一"}）`,
     linked.length > 0 ? `🔗 對應到既有人脈：${linked.join("、")}` : null,
-    created.length > 0 ? `🆕 新建人脈：${created.join("、")}` : null,
+    createdNames.length > 0 ? `🆕 新建人脈：${createdNames.join("、")}` : null,
     filled.length > 0 ? `✏️ 從聊天內容補上：\n${filled.join("\n")}` : null,
   ].filter(Boolean);
 
-  const createdContacts = result.participants.filter((p) => p.created && p.contactId).slice(0, 8);
+  const createdContacts = result.participants.filter((p) => created.has(p.name) && p.contactId).slice(0, 8);
   return [
     text(lines.join("\n"), [
       ...createdContacts.map((p) => postback(`補 ${p.name}`, { a: "fill", id: p.contactId! }, `補 ${p.name} 的資料`)),
