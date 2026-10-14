@@ -35,3 +35,15 @@ export function formatTaipeiTime(iso: string): string {
     timeZone: TAIPEI_TZ,
   });
 }
+
+/** Today's calendar date in Taiwan as "YYYY-MM-DD" (en-CA formats as ISO). */
+export function taipeiToday(now: Date = new Date()): string {
+  return now.toLocaleDateString("en-CA", { timeZone: TAIPEI_TZ });
+}
+
+/** Adds whole days to a "YYYY-MM-DD" date string. */
+export function addDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}

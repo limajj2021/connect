@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login"];
+// Machine endpoints authenticate themselves (LINE signature, CRON_SECRET).
+const PUBLIC_PATHS = ["/login", "/api/line/webhook", "/api/cron"];
 
 function isPublicPath(pathname: string) {
   return (

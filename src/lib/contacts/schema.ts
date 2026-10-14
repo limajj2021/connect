@@ -27,6 +27,8 @@ export const contactFormSchema = z.object({
     emptyToUndefined,
     z.string().trim().url("連結格式不正確").max(500).optional(),
   ),
+  whatsapp_phone: z.preprocess(emptyToUndefined, z.string().trim().max(50).optional()),
+  wechat_id: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
   met_date: z.preprocess(emptyToUndefined, z.string().optional()),
   met_channel: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
   birthday_month: z.preprocess(

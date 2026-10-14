@@ -108,14 +108,3 @@ export async function listChatImportsForContact(contactId: string): Promise<Chat
   if (error) throw error;
   return (data ?? []) as ChatImportJoinRow[];
 }
-
-export async function findChatImportByFileHash(fileHash: string): Promise<ChatImportRow | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("chat_imports")
-    .select("*")
-    .eq("file_hash", fileHash)
-    .maybeSingle();
-  if (error) throw error;
-  return data as ChatImportRow | null;
-}

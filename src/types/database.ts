@@ -29,6 +29,8 @@ export interface ContactRow {
   line_display_name: string | null;
   line_id: string | null;
   line_url: string | null;
+  whatsapp_phone: string | null;
+  wechat_id: string | null;
   met_date: string | null;
   met_channel: string | null;
   birthday_month: number | null;

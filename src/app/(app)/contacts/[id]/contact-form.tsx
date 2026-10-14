@@ -120,6 +120,14 @@ export function ContactForm({
           {fieldError("line_url") ? <p className="text-sm text-destructive">{fieldError("line_url")}</p> : null}
         </div>
         <div className="space-y-2">
+          <Label htmlFor="whatsapp_phone">WhatsApp 電話</Label>
+          <Input id="whatsapp_phone" name="whatsapp_phone" type="tel" defaultValue={contact.whatsapp_phone ?? ""} placeholder="+886912345678" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="wechat_id">WeChat ID</Label>
+          <Input id="wechat_id" name="wechat_id" defaultValue={contact.wechat_id ?? ""} />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="met_date">認識日期</Label>
           <Input id="met_date" name="met_date" type="date" defaultValue={contact.met_date ?? ""} />
         </div>

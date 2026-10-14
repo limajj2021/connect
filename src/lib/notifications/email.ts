@@ -3,22 +3,8 @@ import "server-only";
 import { Resend } from "resend";
 
 import { createClient } from "@/lib/supabase/server";
-import { FESTIVAL_LABELS } from "@/lib/reminders/taiwan-holidays";
+import { reminderTitle } from "@/lib/reminders/labels";
 import type { ReminderWithContact } from "@/lib/reminders/queries";
-
-const REMINDER_TYPE_LABELS: Record<string, string> = {
-  festival: "節日提醒",
-  birthday: "生日提醒",
-  custom: "自訂提醒",
-  meeting_followup: "會議後續待辦",
-};
-
-function reminderTitle(reminder: ReminderWithContact) {
-  if (reminder.reminder_type === "festival" && reminder.festival_key) {
-    return `${FESTIVAL_LABELS[reminder.festival_key]}提醒`;
-  }
-  return REMINDER_TYPE_LABELS[reminder.reminder_type] ?? "提醒";
-}
 
 export interface EmailSendResult {
   sent: boolean;

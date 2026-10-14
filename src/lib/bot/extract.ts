@@ -1,0 +1,224 @@
+/**
+ * Rule-based extraction of contact details from free text — a typed LINE
+ * message ("新增 王小明 台積電 經理 0912345678 生日3/4") or OCR output from a
+ * business card / profile screenshot. No AI: just Taiwan-centric patterns.
+ * Anything it can't find is left undefined so the bot can ask for it.
+ */
+
+export interface ContactDraft {
+  name?: string;
+  company?: string;
+  title?: string;
+  role_type?: "boss" | "non_boss";
+  phone?: string;
+  email?: string;
+  line_id?: string;
+  whatsapp_phone?: string;
+  wechat_id?: string;
+  birthday_month?: number;
+  birthday_day?: number;
+  birthday_year?: number;
+  notes?: string;
+}
+
+const FULLWIDTH_RE = /[！-～]/g;
+
+/** Full-width ASCII (０-９, Ａ-Ｚ, ：, ＠ …) → half-width, and unify whitespace. */
+export function normalizeText(text: string): string {
+  return text
+    .replace(FULLWIDTH_RE, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/　/g, " ")
+    .replace(/\r\n?/g, "\n");
+}
+
+const COMPANY_SUFFIX_RE =
+  /(股份有限公司|有限公司|公司|集團|企業社|企業|銀行|證券|保險|事務所|工作室|協會|基金會|學會|大學|學院|醫院|診所|研究院|科技|實業|國際|控股|商行|Inc\.?|Co\.?,?\s*Ltd\.?|Ltd\.?|Corp\.?|Corporation|LLC|GmbH|Group|Studio)/i;
+
+// Longest first so "副總經理" wins over "總經理" and "經理".
+const TITLE_KEYWORDS = [
+  "董事長", "副董事長", "總經理", "副總經理", "執行長", "營運長", "財務長", "技術長", "行銷長",
+  "總裁", "副總裁", "創辦人", "共同創辦人", "負責人", "合夥人", "董事", "監察人", "總監", "副總",
+  "協理", "經理", "副理", "襄理", "主任", "組長", "課長", "處長", "部長", "院長", "店長", "廠長",
+  "專員", "工程師", "設計師", "顧問", "律師", "會計師", "醫師", "教授", "老師", "秘書", "特助",
+  "業務", "主管", "老闆",
+  "CEO", "CTO", "CFO", "COO", "CMO", "Founder", "Co-Founder", "President", "Vice President", "VP",
+  "Director", "Manager", "Engineer", "Designer", "Consultant", "Partner", "Owner",
+].sort((a, b) => b.length - a.length);
+
+const BOSS_TITLE_RE = /(董事長|總經理|執行長|總裁|創辦人|負責人|老闆|合夥人|CEO|Founder|President|Owner)/i;
+
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+// TW mobile (09xx-xxx-xxx / +886 9xx…), TW landline (02-2345-6789), or international (+…).
+const PHONE_RE = /(?:\+?886[\s-]?9\d{2}|09\d{2})[\s-]?\d{3}[\s-]?\d{3}|\(?0\d{1,2}\)?[\s-]?\d{3,4}[\s-]?\d{4}(?:\s*(?:#|ext\.?|分機)\s*\d{1,5})?|\+\d{1,3}[\s-]?\d{2,4}[\s-]?\d{3,4}[\s-]?\d{3,4}/;
+const LINE_ID_RE = /(?:LINE\s*(?:ID)?|賴)\s*[:：]?\s*(@?[A-Za-z0-9._-]{3,30})/i;
+const LINE_URL_RE = /line\.me\/(?:R\/)?ti\/p\/~?(@?[A-Za-z0-9._%-]{3,60})/i;
+const WECHAT_RE = /(?:WeChat|微信)\s*(?:ID|號|号)?\s*[:：]?\s*([A-Za-z][A-Za-z0-9_-]{4,40})/i;
+const WHATSAPP_RE = /WhatsApp\s*[:：]?\s*(\+?[\d\s-]{8,20})/i;
+const BIRTHDAY_RE = /(?:生日|birthday|bday)\s*[:：]?\s*(?:(\d{4})\s*[/\-.年]\s*)?(\d{1,2})\s*[/\-.月]\s*(\d{1,2})\s*日?/i;
+const LABEL_PREFIX_RE = /^(?:姓名|名字|Name|公司|Company|職稱|Title|電話|手機|Tel|Mobile|Phone|Email|E-mail|地址|Address|傳真|Fax)\s*[:：]\s*/i;
+const ADDRESS_RE = /(市|縣|區|鄉|鎮|路|街|巷|弄|號|樓|Rd\.?|St\.?|Ave\.?|Floor|F\.)/;
+const CJK_NAME_RE = /^[一-鿿]{2,4}$/;
+const EN_NAME_RE = /^[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,2}$/;
+
+export function normalizePhone(raw: string): string {
+  const trimmed = raw.trim();
+  const plus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/[^\d#]/g, "");
+  return plus ? `+${digits}` : digits;
+}
+
+export function findTitle(text: string): string | undefined {
+  for (const keyword of TITLE_KEYWORDS) {
+    const re = new RegExp(`[\\u4e00-\\u9fffA-Za-z]{0,4}${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+    const match = text.match(re);
+    if (match) return match[0].trim();
+  }
+  return undefined;
+}
+
+export function guessRole(title: string | undefined): "boss" | "non_boss" | undefined {
+  if (!title) return undefined;
+  return BOSS_TITLE_RE.test(title) ? "boss" : undefined;
+}
+
+export function parseBirthday(text: string): { year?: number; month: number; day: number } | undefined {
+  const normalized = normalizeText(text).trim();
+  const match =
+    normalized.match(BIRTHDAY_RE) ??
+    normalized.match(/^(?:(\d{4})\s*[/\-.年]\s*)?(\d{1,2})\s*[/\-.月]\s*(\d{1,2})\s*日?$/);
+  if (!match) return undefined;
+  const year = match[1] ? Number(match[1]) : undefined;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  if (year !== undefined && (year < 1900 || year > 2100)) return undefined;
+  return { year, month, day };
+}
+
+/** Pulls structured fields out of free text; returns what it found plus leftover text. */
+export function extractContactFields(input: string): { draft: ContactDraft; leftover: string[] } {
+  let text = normalizeText(input);
+  const draft: ContactDraft = {};
+
+  const take = (re: RegExp, group = 0): string | undefined => {
+    const match = text.match(re);
+    if (!match) return undefined;
+    text = text.replace(match[0], " ");
+    return (match[group] ?? match[0]).trim();
+  };
+
+  const birthday = text.match(BIRTHDAY_RE);
+  if (birthday) {
+    const parsed = parseBirthday(birthday[0]);
+    if (parsed) {
+      draft.birthday_month = parsed.month;
+      draft.birthday_day = parsed.day;
+      if (parsed.year) draft.birthday_year = parsed.year;
+      text = text.replace(birthday[0], " ");
+    }
+  }
+
+  const whatsapp = take(WHATSAPP_RE, 1);
+  if (whatsapp) draft.whatsapp_phone = normalizePhone(whatsapp);
+  const wechat = take(WECHAT_RE, 1);
+  if (wechat) draft.wechat_id = wechat;
+  const lineUrl = take(LINE_URL_RE, 1);
+  const email = take(EMAIL_RE);
+  if (email) draft.email = email.toLowerCase();
+  const lineId = take(LINE_ID_RE, 1);
+  if (lineId ?? lineUrl) draft.line_id = decodeURIComponent((lineId ?? lineUrl)!);
+  const phone = take(PHONE_RE);
+  if (phone) draft.phone = normalizePhone(phone);
+
+  const leftover: string[] = [];
+  const segments = text
+    .split(/\n|[,，、;；|｜]|\s{2,}/)
+    .flatMap((line) => line.split(/\s+(?=[一-鿿])|(?<=[一-鿿])\s+/))
+    .map((s) => s.replace(LABEL_PREFIX_RE, "").trim())
+    .filter(Boolean);
+
+  for (const segment of segments) {
+    if (!draft.company && COMPANY_SUFFIX_RE.test(segment) && !ADDRESS_RE.test(segment.replace(COMPANY_SUFFIX_RE, ""))) {
+      draft.company = segment;
+      continue;
+    }
+    const title = findTitle(segment);
+    if (title && !draft.title) {
+      // "王小明 經理" written without a space → split the name back out.
+      const rest = segment.replace(title, "").trim();
+      draft.title = title;
+      if (rest && !draft.name && (CJK_NAME_RE.test(rest) || EN_NAME_RE.test(rest))) draft.name = rest;
+      else if (rest) leftover.push(rest);
+      continue;
+    }
+    if (!draft.name && (CJK_NAME_RE.test(segment) || EN_NAME_RE.test(segment))) {
+      draft.name = segment;
+      continue;
+    }
+    leftover.push(segment);
+  }
+
+  draft.role_type = guessRole(draft.title);
+  if (!draft.role_type) delete draft.role_type;
+  return { draft, leftover };
+}
+
+/**
+ * For typed commands ("新增 王小明 台積電 0912…") the first word is the name by
+ * convention, even when it doesn't look like a typical 2–4 character name.
+ */
+export function extractFromCommand(args: string): ContactDraft {
+  const normalized = normalizeText(args).trim();
+  if (!normalized) return {};
+  const [first, ...rest] = normalized.split(/\s+/);
+  const { draft, leftover } = extractContactFields(rest.join(" "));
+  const firstIsField =
+    EMAIL_RE.test(first) || PHONE_RE.test(first) || COMPANY_SUFFIX_RE.test(first) || BIRTHDAY_RE.test(first);
+  if (firstIsField) {
+    const all = extractContactFields(normalized);
+    return withNotes(all.draft, all.leftover);
+  }
+  if (draft.name) {
+    // The rest of the line had its own name-looking word (e.g. "台積電" is 3
+    // CJK characters) — the name slot is taken by `first`, so treat it as text.
+    leftover.unshift(draft.name);
+    delete draft.name;
+  }
+  // "林總經理" → name 林, title 總經理.
+  const gluedTitle = TITLE_KEYWORDS.find((keyword) => first.length > keyword.length && first.endsWith(keyword));
+  if (gluedTitle && !draft.title) {
+    draft.title = gluedTitle;
+    draft.role_type = guessRole(gluedTitle) ?? draft.role_type;
+    draft.name = first.slice(0, -gluedTitle.length);
+  } else {
+    draft.name = first;
+  }
+  if (draft.name && leftover.length > 0 && !draft.company) {
+    // A bare word after the name with no other signal is most often the company.
+    draft.company = leftover.shift();
+  }
+  return withNotes(draft, leftover);
+}
+
+function withNotes(draft: ContactDraft, leftover: string[]): ContactDraft {
+  if (leftover.length > 0) draft.notes = leftover.join(" ");
+  if (!draft.role_type) delete draft.role_type;
+  return draft;
+}
+
+/** OCR output from a business card or a LINE/IG profile screenshot. */
+export function extractFromOcr(ocrText: string): ContactDraft {
+  const { draft, leftover } = extractContactFields(ocrText);
+  // On a card the name is usually the shortest CJK line near the top; if the
+  // strict pattern didn't hit, fall back to the first short line.
+  if (!draft.name) {
+    const candidate = leftover.find((s) => s.length >= 2 && s.length <= 6 && !/\d/.test(s) && !ADDRESS_RE.test(s));
+    if (candidate) {
+      draft.name = candidate;
+      leftover.splice(leftover.indexOf(candidate), 1);
+    }
+  }
+  const noise = leftover.filter((s) => s.length > 1);
+  if (noise.length > 0) draft.notes = `名片/截圖其他文字：${noise.join(" / ")}`.slice(0, 500);
+  return draft;
+}
