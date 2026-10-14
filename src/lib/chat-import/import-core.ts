@@ -3,7 +3,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sha256Hex } from "@/lib/chat-import/hash";
-import { parseLineChatExport, type ParsedChat, type ParsedMessage } from "@/lib/chat-import/line-parser";
+import { type ChatSource, parseChatExport } from "@/lib/chat-import/parse";
+import type { ParsedChat, ParsedMessage } from "@/lib/chat-import/line-parser";
 import { OWNER_SENDER_LABEL, type ParticipantMapping } from "@/lib/chat-import/schema";
 
 const INSERT_BATCH_SIZE = 500;
@@ -28,6 +29,7 @@ export type ChatImportResult =
       messageCount: number;
       participants: { name: string; contactId: string | null; created: boolean }[];
       parsed: ParsedChat;
+      source: ChatSource;
     }
   | { ok: false; error: string; existingImportId?: string };
 
@@ -50,7 +52,10 @@ export async function importLineChatFile(opts: {
    */
   ownerNames?: string[] | ((parsed: ParsedChat) => string[]);
   /** Decides link/create/skip per participant once the file is parsed. */
-  resolveMapping: (participants: string[]) => Promise<ParticipantMapping> | ParticipantMapping;
+  resolveMapping: (
+    participants: string[],
+    context: { parsed: ParsedChat; source: ChatSource },
+  ) => Promise<ParticipantMapping> | ParticipantMapping;
 }): Promise<ChatImportResult> {
   const { supabase, ownerId, fileName, buffer } = opts;
   const fileHash = await sha256Hex(buffer);
@@ -66,9 +71,9 @@ export async function importLineChatFile(opts: {
     return { ok: false, error: "這個檔案先前已經匯入過了", existingImportId: existing.id as string };
   }
 
-  const parsed = parseLineChatExport(new TextDecoder("utf-8").decode(buffer));
+  const { parsed, source } = parseChatExport(new TextDecoder("utf-8").decode(buffer), fileName);
   if (parsed.messages.length === 0) {
-    return { ok: false, error: "無法解析任何訊息，請確認檔案是否為 LINE 聊天記錄 TXT 匯出檔" };
+    return { ok: false, error: "無法解析任何訊息，請確認檔案是否為 LINE 或 WhatsApp 匯出的聊天記錄" };
   }
 
   const ownerNames = new Set(
@@ -78,7 +83,7 @@ export async function importLineChatFile(opts: {
   );
   const realParticipants = parsed.participants.filter((p) => !ownerNames.has(p.trim()));
   const chatType: "individual" | "group" = realParticipants.length > 1 ? "group" : "individual";
-  const mapping = await opts.resolveMapping(realParticipants);
+  const mapping = await opts.resolveMapping(realParticipants, { parsed, source });
 
   // Resolve each participant to a contact: link to an existing one, create a new
   // one from their LINE display name, or leave unmatched.
@@ -183,5 +188,6 @@ export async function importLineChatFile(opts: {
       created: resolved.get(name)?.created ?? false,
     })),
     parsed,
+    source,
   };
 }

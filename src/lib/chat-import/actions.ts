@@ -21,7 +21,7 @@ export async function importChat(_prev: ImportActionState, formData: FormData): 
     return { error: `檔案過大（上限 ${Math.floor(MAX_IMPORT_FILE_BYTES / 1024 / 1024)}MB）` };
   }
   if (!file.name.toLowerCase().endsWith(".txt")) {
-    return { error: "僅支援 LINE 匯出的 .txt 檔案" };
+    return { error: "僅支援 LINE／WhatsApp 匯出的 .txt 檔案" };
   }
 
   const mappingRaw = formData.get("mapping");

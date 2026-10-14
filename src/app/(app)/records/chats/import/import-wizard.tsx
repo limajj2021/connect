@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { importChat, type ImportActionState } from "@/lib/chat-import/actions";
-import { parseLineChatExport, type ParsedChat } from "@/lib/chat-import/line-parser";
+import type { ParsedChat } from "@/lib/chat-import/line-parser";
+import { parseChatExport } from "@/lib/chat-import/parse";
 import { OWNER_SENDER_LABEL, type ParticipantMapping } from "@/lib/chat-import/schema";
 
 const initialState: ImportActionState = {};
@@ -48,9 +49,9 @@ export function ImportWizard({ contactOptions }: { contactOptions: ContactOption
 
     try {
       const text = await selected.text();
-      const result = parseLineChatExport(text);
+      const { parsed: result } = parseChatExport(text, selected.name);
       if (result.messages.length === 0) {
-        setParseError("無法解析任何訊息，請確認檔案是否為 LINE 聊天記錄 TXT 匯出檔");
+        setParseError("無法解析任何訊息，請確認檔案是否為 LINE 或 WhatsApp 匯出的聊天記錄 TXT");
         return;
       }
       setParsed(result);
@@ -99,7 +100,7 @@ export function ImportWizard({ contactOptions }: { contactOptions: ContactOption
         />
         <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
           <Upload className="size-4" />
-          {file ? file.name : "選擇 LINE 聊天記錄 TXT 檔案"}
+          {file ? file.name : "選擇 LINE／WhatsApp 聊天記錄 TXT 檔案"}
         </Button>
         {parseError ? (
           <p className="flex items-center gap-1.5 text-sm text-destructive">
