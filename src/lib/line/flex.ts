@@ -112,6 +112,11 @@ function bubble(opts: {
   };
 }
 
+/** A small card with a headline and a few action buttons. */
+export function noticeCard(altText: string, title: string, subtitle: string | undefined, actions: Action[]): LineMessage {
+  return flex(altText, bubble({ title, subtitle, accent: "#2f5d50", buttons: actions.map((a, i) => button(a, i === 0 ? "secondary" : "link")) }));
+}
+
 export function carousel(altText: string, bubbles: Record<string, unknown>[], quick?: Action[]): LineMessage {
   if (bubbles.length === 1) return flex(altText, bubbles[0], quick);
   return flex(altText, { type: "carousel", contents: bubbles.slice(0, 12) }, quick);
@@ -235,6 +240,7 @@ export function contactMoreMenu(contact: ContactForCard): LineMessage {
 export function draftBubble(draft: ContactDraft, source: string) {
   const entries: [string, string | undefined][] = [
     ["姓名", draft.name],
+    ["LINE 名稱", draft.line_display_name],
     ["公司", draft.company],
     ["職稱", draft.title],
     ["身分", draft.role_type ? ROLE_LABEL[draft.role_type] : undefined],
@@ -369,7 +375,8 @@ export function helpMessages(): LineMessage[] {
         "🗒 備註 王小明 喜歡喝咖啡",
         "🎂 生日／提醒／待辦／今日",
         "",
-        "📷 傳名片或個人頁截圖 → 我幫你辨識建檔",
+        "📷 傳名片、好友個人頁或好友名片的截圖 → 直接建檔",
+        "（LINE 的「分享好友」機器人收不到，請改用截圖）",
         "📄 傳 LINE 匯出的聊天 .txt → 匯入聊天紀錄",
         "",
         "打「取消」可結束目前的問答。",

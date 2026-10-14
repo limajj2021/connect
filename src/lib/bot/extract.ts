@@ -15,6 +15,7 @@ export interface ContactDraft {
   line_id?: string;
   whatsapp_phone?: string;
   wechat_id?: string;
+  line_display_name?: string;
   birthday_month?: number;
   birthday_day?: number;
   birthday_year?: number;
@@ -206,9 +207,84 @@ function withNotes(draft: ContactDraft, leftover: string[]): ContactDraft {
   return draft;
 }
 
-/** OCR output from a business card or a LINE/IG profile screenshot. */
+// Words from LINE's own UI that show up in screenshots of a shared contact
+// card or a profile page — never part of the person's details.
+const SCREEN_NOISE_RE =
+  /^(?:view profile|查看個人檔案|個人檔案|加入好友|add friend|add|chat|聊天|語音通話|視訊通話|免費通話|免費視訊|voice call|video call|keep|主頁|home|投稿|posts?|封鎖|block|分享|share|已讀|read|通話|追蹤|follow|相簿|筆記|編輯|edit|設定|settings|\d{1,2}:\d{2}\s*(?:am|pm)?|(?:上午|下午)\s*\d{1,2}:\d{2})$/i;
+const PROFILE_MARKER_RE = /^(?:view profile|查看個人檔案|加入好友|add friend|語音通話|視訊通話|voice call|video call|免費通話)$/i;
+const DECORATION_RE = /^[\s*★☆♡♥✨🌟~～|｜·•]+|[\s*★☆♡♥✨🌟~～|｜·•]+$/gu;
+
+/** True when OCR text came from a LINE contact card / profile page screenshot. */
+export function looksLikeLineProfile(ocrText: string): boolean {
+  return normalizeText(ocrText)
+    .split("\n")
+    .some((line) => PROFILE_MARKER_RE.test(line.trim()));
+}
+
+/**
+ * Splits a LINE display name the way people actually write them in Taiwan:
+ * "Kenny吳副 @印度班加*" → name "Kenny 吳副", tag "印度班加";
+ * "王小明-台積電" → name "王小明", company "台積電".
+ */
+export function parseLineDisplayName(raw: string): ContactDraft {
+  const displayName = normalizeText(raw).replace(DECORATION_RE, "").trim();
+  if (!displayName) return {};
+  const draft: ContactDraft = { line_display_name: displayName };
+
+  const [beforeAt, ...afterAt] = displayName.split("@");
+  let namePart = beforeAt.trim();
+  const tags: string[] = [];
+  const tag = afterAt.join("@").replace(DECORATION_RE, "").trim();
+  if (tag) tags.push(tag);
+
+  // "王小明-台積電" / "王小明｜業務" / "王小明 (台積電)"
+  const split = namePart.match(/^(.+?)\s*[-–—|/_(（]\s*(.+?)[)）]?$/);
+  if (split) {
+    namePart = split[1].trim();
+    tags.push(split[2].trim());
+  }
+  if (!namePart) namePart = tag;
+
+  for (const t of tags) {
+    if (!draft.company && COMPANY_SUFFIX_RE.test(t)) draft.company = t;
+    else if (!draft.title && findTitle(t)) draft.title = findTitle(t);
+  }
+  const otherTags = tags.filter((t) => t !== draft.company && !(draft.title && t.includes(draft.title)));
+  if (otherTags.length > 0) draft.notes = `LINE 名稱標註：${otherTags.join("、")}`;
+
+  // "Kenny吳副" → "Kenny 吳副": readable spacing between Latin and CJK.
+  draft.name = namePart
+    .replace(/([A-Za-z])(?=[\u4e00-\u9fff])/g, "$1 ")
+    .replace(/([\u4e00-\u9fff])(?=[A-Za-z])/g, "$1 ")
+    .slice(0, 100);
+  if (/[董總](?:\s|$)/.test(draft.name) || BOSS_TITLE_RE.test(draft.name)) draft.role_type = "boss";
+  return draft;
+}
+
+/** OCR output from a business card, a LINE contact card, or a profile screenshot. */
 export function extractFromOcr(ocrText: string): ContactDraft {
-  const { draft, leftover } = extractContactFields(ocrText);
+  const lines = normalizeText(ocrText)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !SCREEN_NOISE_RE.test(line));
+
+  if (looksLikeLineProfile(ocrText) && lines.length > 0) {
+    // LINE profile / shared contact card: the display name comes first, then
+    // (on a profile page) the status message, which often has company/title.
+    const draft = parseLineDisplayName(lines[0]);
+    const rest = lines.slice(1).join("\n");
+    if (rest) {
+      const { draft: more, leftover } = extractContactFields(rest);
+      for (const [key, value] of Object.entries(more)) {
+        if (value !== undefined && key !== "name" && !(key in draft)) (draft as Record<string, unknown>)[key] = value;
+      }
+      const status = [more.name, ...leftover].filter(Boolean).join(" ");
+      if (status) draft.notes = [draft.notes, `狀態消息：${status}`].filter(Boolean).join("\n").slice(0, 500);
+    }
+    return draft;
+  }
+
+  const { draft, leftover } = extractContactFields(lines.join("\n"));
   // On a card the name is usually the shortest CJK line near the top; if the
   // strict pattern didn't hit, fall back to the first short line.
   if (!draft.name) {

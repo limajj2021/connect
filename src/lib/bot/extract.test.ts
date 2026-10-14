@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractFromCommand, extractFromOcr, normalizePhone, parseBirthday } from "./extract";
+import { extractFromCommand, extractFromOcr, normalizePhone, parseBirthday, parseLineDisplayName } from "./extract";
 
 describe("extractFromCommand", () => {
   it("parses a typical quick-add line", () => {
@@ -66,5 +66,27 @@ describe("helpers", () => {
     expect(parseBirthday("1990年3月4日")).toEqual({ year: 1990, month: 3, day: 4 });
     expect(parseBirthday("生日 12-25")).toEqual({ year: undefined, month: 12, day: 25 });
     expect(parseBirthday("13/40")).toBeUndefined();
+  });
+});
+
+describe("LINE contact card / profile screenshots", () => {
+  it("reads a shared contact card", () => {
+    const d = extractFromOcr("Kenny吳副 ＠印度班加*\nView profile");
+    expect(d.name).toBe("Kenny 吳副");
+    expect(d.line_display_name).toBe("Kenny吳副 @印度班加");
+    expect(d.notes).toBe("LINE 名稱標註：印度班加");
+  });
+
+  it("reads a profile page with a status message", () => {
+    const d = extractFromOcr("下午 11:31\n王大明-宏遠科技股份有限公司\n專注半導體設備 0912-111-222\n聊天\n語音通話\n視訊通話\nKeep");
+    expect(d.name).toBe("王大明");
+    expect(d.company).toBe("宏遠科技股份有限公司");
+    expect(d.phone).toBe("0912111222");
+    expect(d.notes).toContain("專注半導體設備");
+  });
+
+  it("splits display-name conventions", () => {
+    expect(parseLineDisplayName("陳總 | 業務總監")).toMatchObject({ name: "陳總", title: "業務總監", role_type: "boss" });
+    expect(parseLineDisplayName("★Amy林★")).toMatchObject({ name: "Amy 林", line_display_name: "Amy林" });
   });
 });

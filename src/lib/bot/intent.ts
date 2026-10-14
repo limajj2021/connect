@@ -42,8 +42,3 @@ export function parseIntent(input: string): Intent {
   }
   return { kind: "unknown", text };
 }
-
-/** Commands that always interrupt an in-progress question flow. */
-export function isInterruptingIntent(intent: Intent): boolean {
-  return intent.kind === "cancel" || intent.kind === "help" || intent.kind === "today";
-}

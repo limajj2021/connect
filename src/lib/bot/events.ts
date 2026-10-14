@@ -12,7 +12,7 @@ import { taipeiToday } from "@/lib/format-date";
 
 import { type BotCtx, CONTACT_CARD_COLUMNS, updateContact } from "./data";
 import { extractContactFields, extractFromOcr } from "./extract";
-import { handlePostback, handleText, proposeDraft } from "./handlers";
+import { createFromScreenshot, handlePostback, handleText } from "./handlers";
 import type { ContactForCard } from "@/lib/line/flex";
 
 /** The subset of LINE webhook event fields this bot reads. */
@@ -120,7 +120,7 @@ async function handleImage(ctx: BotCtx, messageId: string): Promise<LineMessage[
   if (found === 0) {
     return [text(`我讀到這些字，但認不出聯絡資料：\n${ocr.text.slice(0, 300)}\n\n可以告訴我這是誰嗎？例如：新增 王小明 …`, MAIN_QUICK)];
   }
-  return proposeDraft(ctx, draft, "從圖片辨識（請確認）");
+  return createFromScreenshot(ctx, draft);
 }
 
 /** Messages LINE can deliver but the bot can't read (stickers, voice, shared contacts…). */
