@@ -72,3 +72,13 @@ describe("templates", () => {
     expect(greetingText("chinese_new_year", null)).not.toContain("{稱呼}");
   });
 });
+
+describe("forwarded chats", () => {
+  it("recognises collect commands", () => {
+    expect(parseIntent("轉傳").kind).toBe("collect_start");
+    expect(parseIntent("是 王小明")).toMatchObject({ kind: "collect_target", name: "王小明" });
+    expect(parseIntent("跟陳美玲的對話")).toMatchObject({ kind: "collect_target", name: "陳美玲" });
+    expect(parseIntent("是")).toMatchObject({ kind: "unknown" });
+    expect(parseIntent("好的謝謝，明天見").kind).toBe("unknown");
+  });
+});

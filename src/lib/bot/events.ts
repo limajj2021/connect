@@ -10,9 +10,11 @@ import { isOcrConfigured, ocrImage } from "@/lib/ocr/ocr-space";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
 import { taipeiToday } from "@/lib/format-date";
 
-import { type BotCtx, CONTACT_CARD_COLUMNS, updateContact } from "./data";
+import { type BotCtx, CONTACT_CARD_COLUMNS, loadSession, updateContact } from "./data";
 import { extractContactFields, extractFromOcr } from "./extract";
-import { createFromScreenshot, handlePostback, handleText } from "./handlers";
+import { appendToCollect } from "./forward";
+import { type FlowState, createFromScreenshot, handlePostback, handleText } from "./handlers";
+import { parseIntent } from "./intent";
 import type { ContactForCard } from "@/lib/line/flex";
 
 /** The subset of LINE webhook event fields this bot reads. */
@@ -115,6 +117,12 @@ async function handleImage(ctx: BotCtx, messageId: string): Promise<LineMessage[
   const ocr = await ocrImage(image);
   if (!ocr.ok) return [text(`圖片辨識失敗：${ocr.error}\n可以改用打字：新增 名字 公司 電話…`, MAIN_QUICK)];
 
+  const state = await loadSession<FlowState>(ctx);
+  if (state?.flow === "collect") {
+    // A chat screenshot while forwarding: keep its text with the other messages.
+    return appendToCollect(ctx, state, [`［截圖］${ocr.text}`]);
+  }
+
   const draft = extractFromOcr(ocr.text);
   const found = Object.keys(draft).filter((k) => k !== "notes").length;
   if (found === 0) {
@@ -168,11 +176,14 @@ async function respond(ctx: BotCtx, event: LineEvent): Promise<LineMessage[]> {
   }
 }
 
-/** Processes one webhook event end to end (runs after the 200 response). */
-export async function processLineEvent(event: LineEvent) {
+/**
+ * Only the owner is served. Returns a context for the owner, or null after
+ * replying whatever is appropriate to anyone else (setup hint / private notice).
+ */
+async function ownerContext(event: LineEvent): Promise<BotCtx | null> {
   const userId = event.source?.userId;
-  if (!userId || event.source?.type !== "user") return;
-  if (event.deliveryContext?.isRedelivery) return; // never double-apply a write
+  if (!userId || event.source?.type !== "user") return null;
+  if (event.deliveryContext?.isRedelivery) return null; // never double-apply a write
 
   const { ownerUserId } = lineConfig();
   if (!ownerUserId) {
@@ -182,33 +193,65 @@ export async function processLineEvent(event: LineEvent) {
         text(`設定用：你的 LINE userId 是\n${userId}\n\n把它設為 LINE_OWNER_USER_ID 後，我就只會回應你。`),
       ]);
     }
-    return;
+    return null;
   }
   if (userId !== ownerUserId) {
     if (event.replyToken && event.type === "message") {
       await replyOrPush(event.replyToken, userId, [text("這是私人帳號，無法提供服務，謝謝 🙏")]);
     }
-    return;
+    return null;
   }
+  return { supabase: createAdminClient(), ownerId: await getOwnerUserId(), lineUserId: userId, today: taipeiToday() };
+}
 
-  if (event.type === "message" && event.message && !["text", "image", "file"].includes(event.message.type)) {
-    // Logged on purpose: shows what LINE actually sends for e.g. a shared contact.
-    console.info("[line-bot] unhandled message payload", JSON.stringify(event.message));
-  }
-
-  const ctx: BotCtx = {
-    supabase: createAdminClient(),
-    ownerId: await getOwnerUserId(),
-    lineUserId: userId,
-    today: taipeiToday(),
-  };
-
+async function run(ctx: BotCtx, replyToken: string | undefined, work: () => Promise<LineMessage[]>) {
   let messages: LineMessage[];
   try {
-    messages = await respond(ctx, event);
+    messages = await work();
   } catch (error) {
     console.error("[line-bot] handler failed", error);
     messages = [text("抱歉，剛剛出了點問題，請再試一次 🙏", MAIN_QUICK)];
   }
-  if (messages.length > 0) await replyOrPush(event.replyToken, userId, messages);
+  if (messages.length > 0) await replyOrPush(replyToken, ctx.lineUserId, messages);
+}
+
+/** Processes one webhook event end to end (runs after the 200 response). */
+export async function processLineEvent(event: LineEvent) {
+  if (event.type === "message" && event.message && !["text", "image", "file"].includes(event.message.type)) {
+    // Logged on purpose: shows what LINE actually sends for unusual message types.
+    console.info("[line-bot] unhandled message payload", JSON.stringify(event.message));
+  }
+  const ctx = await ownerContext(event);
+  if (!ctx) return;
+  await run(ctx, event.replyToken, () => respond(ctx, event));
+}
+
+const isPlainText = (e: LineEvent) => e.type === "message" && e.message?.type === "text";
+
+/**
+ * Forwarding several messages at once arrives as a burst of text events in
+ * one webhook call. When none of them is a command, park them together and
+ * answer once (instead of one reply per forwarded line).
+ */
+export async function processLineEvents(events: LineEvent[]) {
+  const texts = events.filter(isPlainText);
+  const isForwardBurst =
+    texts.length >= 2 &&
+    texts.every((e) => e.source?.userId === texts[0].source?.userId) &&
+    texts.every((e) => parseIntent(e.message?.text ?? "").kind === "unknown");
+
+  if (isForwardBurst) {
+    const last = texts[texts.length - 1];
+    const ctx = await ownerContext(last);
+    if (ctx) {
+      await run(ctx, last.replyToken, async () => {
+        const state = await loadSession<FlowState>(ctx);
+        return appendToCollect(ctx, state?.flow === "collect" ? state : null, texts.map((e) => e.message?.text ?? ""));
+      });
+    }
+    for (const event of events.filter((e) => !isPlainText(e))) await processLineEvent(event);
+    return;
+  }
+  // Sequential on purpose: keeps one user's quick successive messages in order.
+  for (const event of events) await processLineEvent(event);
 }

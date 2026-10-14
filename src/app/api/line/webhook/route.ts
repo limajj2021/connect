@@ -1,6 +1,6 @@
 import { NextResponse, after } from "next/server";
 
-import { type LineEvent, processLineEvent } from "@/lib/bot/events";
+import { type LineEvent, processLineEvents } from "@/lib/bot/events";
 import { lineConfig } from "@/lib/line/config";
 import { verifyLineSignature } from "@/lib/line/signature";
 
@@ -27,13 +27,10 @@ export async function POST(request: Request) {
   }
 
   after(async () => {
-    // Sequential on purpose: keeps one user's quick successive messages in order.
-    for (const event of events) {
-      try {
-        await processLineEvent(event);
-      } catch (error) {
-        console.error("[line-bot] event failed", error);
-      }
+    try {
+      await processLineEvents(events);
+    } catch (error) {
+      console.error("[line-bot] events failed", error);
     }
   });
 

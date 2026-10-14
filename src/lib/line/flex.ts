@@ -360,6 +360,7 @@ export const MAIN_QUICK: Action[] = [
   postback("待辦", { a: "cmd", c: "tasks" }, "待辦"),
   postback("生日", { a: "cmd", c: "birthdays" }, "生日"),
   postback("提醒", { a: "cmd", c: "reminders" }, "提醒"),
+  postback("轉傳紀錄", { a: "cmd", c: "collect" }, "轉傳紀錄"),
 ];
 
 export function helpMessages(): LineMessage[] {
@@ -375,8 +376,9 @@ export function helpMessages(): LineMessage[] {
         "🗒 備註 王小明 喜歡喝咖啡",
         "🎂 生日／提醒／待辦／今日",
         "",
+        "💬 到好友聊天室長按訊息 →「轉傳」給我（可多選）→ 選是誰 → 存成他的聊天紀錄並補上電話、Email",
         "📷 傳名片、好友個人頁或好友名片的截圖 → 直接建檔",
-        "（LINE 的「分享好友」機器人收不到，請改用截圖）",
+        "（LINE 的「分享好友」機器人收不到，請改用轉傳或截圖）",
         "📄 傳 LINE 匯出的聊天 .txt → 匯入聊天紀錄",
         "",
         "打「取消」可結束目前的問答。",

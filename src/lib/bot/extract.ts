@@ -51,10 +51,10 @@ const BOSS_TITLE_RE = /(董事長|總經理|執行長|總裁|創辦人|負責人
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 // TW mobile (09xx-xxx-xxx / +886 9xx…), TW landline (02-2345-6789), or international (+…).
 const PHONE_RE = /(?:\+?886[\s-]?9\d{2}|09\d{2})[\s-]?\d{3}[\s-]?\d{3}|\(?0\d{1,2}\)?[\s-]?\d{3,4}[\s-]?\d{4}(?:\s*(?:#|ext\.?|分機)\s*\d{1,5})?|\+\d{1,3}[\s-]?\d{2,4}[\s-]?\d{3,4}[\s-]?\d{3,4}/;
-const LINE_ID_RE = /(?:LINE\s*(?:ID)?|賴)\s*[:：]?\s*(@?[A-Za-z0-9._-]{3,30})/i;
+const LINE_ID_RE = /(?:LINE\s*(?:ID)?|賴)\s*(?:[:：]|是|為|:)?\s*(@?[A-Za-z0-9._-]{3,30})/i;
 const LINE_URL_RE = /line\.me\/(?:R\/)?ti\/p\/~?(@?[A-Za-z0-9._%-]{3,60})/i;
-const WECHAT_RE = /(?:WeChat|微信)\s*(?:ID|號|号)?\s*[:：]?\s*([A-Za-z][A-Za-z0-9_-]{4,40})/i;
-const WHATSAPP_RE = /WhatsApp\s*[:：]?\s*(\+?[\d\s-]{8,20})/i;
+const WECHAT_RE = /(?:WeChat|微信)\s*(?:ID|號|号)?\s*(?:[:：]|是|為)?\s*([A-Za-z][A-Za-z0-9_-]{4,40})/i;
+const WHATSAPP_RE = /WhatsApp\s*(?:[:：]|是|為)?\s*(\+?[\d\s-]{8,20})/i;
 const BIRTHDAY_RE = /(?:生日|birthday|bday)\s*[:：]?\s*(?:(\d{4})\s*[/\-.年]\s*)?(\d{1,2})\s*[/\-.月]\s*(\d{1,2})\s*日?/i;
 const LABEL_PREFIX_RE = /^(?:姓名|名字|Name|公司|Company|職稱|Title|電話|手機|Tel|Mobile|Phone|Email|E-mail|地址|Address|傳真|Fax)\s*[:：]\s*/i;
 const ADDRESS_RE = /(市|縣|區|鄉|鎮|路|街|巷|弄|號|樓|Rd\.?|St\.?|Ave\.?|Floor|F\.)/;

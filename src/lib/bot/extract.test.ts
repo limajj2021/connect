@@ -90,3 +90,11 @@ describe("LINE contact card / profile screenshots", () => {
     expect(parseLineDisplayName("★Amy林★")).toMatchObject({ name: "Amy 林", line_display_name: "Amy林" });
   });
 });
+
+describe("chat-style phrasing", () => {
+  it("reads IDs written as sentences", () => {
+    expect(extractFromCommand("X 我的 LINE ID 是 ke_test88").line_id).toBe("ke_test88");
+    expect(extractFromCommand("X 微信號是 kenny-wx1").wechat_id).toBe("kenny-wx1");
+    expect(extractFromCommand("X WhatsApp 是 +886 955 111 222").whatsapp_phone).toBe("+886955111222");
+  });
+});

@@ -15,6 +15,8 @@ export type Intent =
   | { kind: "note"; name: string; text: string }
   | { kind: "generate_reminders" }
   | { kind: "web" }
+  | { kind: "collect_start" }
+  | { kind: "collect_target"; name: string; text: string }
   | { kind: "unknown"; text: string };
 
 const RULES: [RegExp, (m: RegExpMatchArray) => Intent][] = [
@@ -32,6 +34,9 @@ const RULES: [RegExp, (m: RegExpMatchArray) => Intent][] = [
   [/^(?:備註|筆記|記下)\s+(\S+)\s+([\s\S]+)$/, (m) => ({ kind: "note", name: m[1], text: m[2].trim() })],
   [/^(?:產生提醒|生成提醒|更新提醒)$/, () => ({ kind: "generate_reminders" })],
   [/^(?:網頁|後台|網頁版|匯出|匯入|設定|web)$/i, () => ({ kind: "web" })],
+  [/^(?:轉傳|轉傳紀錄|轉傳訊息|存對話|收集)$/, () => ({ kind: "collect_start" })],
+  // Only meaningful while forwarded messages are parked; otherwise treated as plain text.
+  [/^(?:是|給|跟|和|存到|存給)\s*([^\s，,。]{1,30}?)\s*(?:的(?:對話|聊天|訊息))?$/, (m) => ({ kind: "collect_target", name: m[1], text: m[0] })],
 ];
 
 export function parseIntent(input: string): Intent {

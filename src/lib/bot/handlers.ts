@@ -52,6 +52,7 @@ import { extractDueDate, formatShortDate } from "./dates";
 import { birthdayBubble, buildDigest, festivalGroupBubble, otherReminderBubble } from "./digest";
 import { type ContactDraft, extractContactFields, extractFromCommand, normalizePhone, normalizeText, parseBirthday } from "./extract";
 import { type Intent, parseIntent } from "./intent";
+import { type CollectState, appendToCollect, finalizeByName, finalizeNew, finalizeToContact, startCollect } from "./forward";
 import { GREETING_LABELS, type GreetingKind, greetingText } from "./templates";
 
 // ---------------------------------------------------------------------------
@@ -67,7 +68,8 @@ export type FlowState =
   | { flow: "await_add" }
   | { flow: "await_search" }
   | { flow: "await_task"; contactId?: string }
-  | { flow: "confirm_delete"; contactId: string };
+  | { flow: "confirm_delete"; contactId: string }
+  | CollectState;
 
 const STOP_QUICK = [messageAction("略過", "略過"), postback("結束", { a: "stop" }, "結束")];
 
@@ -154,7 +156,7 @@ async function createFromDraft(ctx: BotCtx, draft: ContactDraft): Promise<LineMe
 async function startAddContact(ctx: BotCtx, args: string): Promise<LineMessage[]> {
   if (!args.trim()) {
     await saveSession(ctx, { flow: "await_add" } satisfies FlowState);
-    return [text("請輸入名字，可以一起打公司、職稱、電話、生日，例如：\n王小明 台積電 經理 0912345678 生日3/4\n\n📷 也可以傳名片、好友個人頁或好友名片的截圖，我會直接建檔。\n（LINE 的「分享好友」機器人收不到，請改用截圖）", [postback("取消", { a: "stop" }, "取消")])];
+    return [text("請輸入名字，可以一起打公司、職稱、電話、生日，例如：\n王小明 台積電 經理 0912345678 生日3/4\n\n📷 也可以傳名片、好友個人頁或好友名片的截圖，我會直接建檔。\n💬 或到他的聊天室長按訊息 →「轉傳」給我。\n（LINE 的「分享好友」機器人收不到）", [postback("取消", { a: "stop" }, "取消")])];
   }
   const draft = extractFromCommand(args);
   if (!draft.name) {
@@ -283,18 +285,9 @@ async function addNote(ctx: BotCtx, name: string, note: string): Promise<LineMes
 async function handleUnknown(ctx: BotCtx, input: string): Promise<LineMessage[]> {
   const exact = await findContactByExactName(ctx, input);
   if (exact.length > 0) return contactCards(exact);
-
-  const { draft } = extractContactFields(input);
-  if (draft.phone || draft.email || draft.line_id || draft.wechat_id) {
-    await saveSession(ctx, { flow: "draft", draft, source: "從你傳的文字辨識" } satisfies FlowState);
-    return [draftBubble(draft, "從你傳的文字辨識")];
-  }
-
-  if (input.length <= 20) {
-    const partial = await searchContacts(ctx, input);
-    if (partial.length > 0) return contactCards(partial, "你是要找這些人嗎？");
-  }
-  return [text(`我看不懂「${input.slice(0, 30)}」🙏\n打「說明」看我會做什麼，或用下面的按鈕：`, MAIN_QUICK)];
+  // Anything else is most likely a message forwarded from a friend's chat (or
+  // pasted details): park it and ask whose conversation it is.
+  return appendToCollect(ctx, null, [input]);
 }
 
 async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
@@ -342,6 +335,10 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
           uri("聊天紀錄", webUrl("/records"))!,
         ]),
       ];
+    case "collect_start":
+      return startCollect(ctx);
+    case "collect_target":
+      return handleUnknown(ctx, intent.text);
     case "unknown":
       return handleUnknown(ctx, intent.text);
   }
@@ -361,6 +358,8 @@ async function handleFlowAnswer(ctx: BotCtx, state: FlowState, input: string): P
       return showSearch(ctx, input);
     case "await_task":
       return addTask(ctx, input, state.contactId);
+    case "collect":
+      return appendToCollect(ctx, state, [input]);
     case "confirm_delete":
       await saveSession(ctx, null);
       return [text("已取消刪除。", MAIN_QUICK)];
@@ -414,7 +413,13 @@ export async function handleText(ctx: BotCtx, input: string): Promise<LineMessag
   const state = await loadSession<FlowState>(ctx);
   // Anything that reads as a command ("新增 …", "待辦 …", "今日") starts that
   // command; only free text is treated as the answer to the pending question.
-  if (state && intent.kind === "unknown") return handleFlowAnswer(ctx, state, input);
+  if (state?.flow === "collect") {
+    if (intent.kind === "collect_target") return finalizeByName(ctx, state, intent.name);
+    if (intent.kind === "unknown") {
+      return state.awaitingName ? finalizeNew(ctx, state, input) : appendToCollect(ctx, state, [input]);
+    }
+  }
+  if (state && state.flow !== "collect" && intent.kind === "unknown") return handleFlowAnswer(ctx, state, input);
   return runIntent(ctx, intent);
 }
 
@@ -438,6 +443,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
         birthdays: { kind: "birthdays" },
         reminders: { kind: "list_reminders" },
         contacts: { kind: "list_contacts" },
+        collect: { kind: "collect_start" },
         help: { kind: "help" },
       };
       return runIntent(ctx, map[c ?? ""] ?? { kind: "help" });
@@ -593,6 +599,18 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       const updated = Object.keys(patch).length > 0 ? await updateContact(ctx, id, patch) : contact;
       await saveSession(ctx, null);
       return [text(`✅ 已把截圖資料併入「${updated.name}」`), carousel(updated.name, [contactBubble(updated)], MAIN_QUICK)];
+    }
+    case "collect_to":
+    case "collect_new":
+    case "collect_cancel": {
+      const state = await loadSession<FlowState>(ctx);
+      if (state?.flow !== "collect") return [text("暫存的訊息已過期（30 分鐘），請重新轉傳。", MAIN_QUICK)];
+      if (a === "collect_cancel") {
+        await saveSession(ctx, null);
+        return [text("好，不存。", MAIN_QUICK)];
+      }
+      if (a === "collect_to") return finalizeToContact(ctx, state, id);
+      return finalizeNew(ctx, state, p.get("n") ?? undefined);
     }
     case "draft_cancel":
       await saveSession(ctx, null);
