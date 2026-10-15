@@ -29,6 +29,8 @@ export const contactFormSchema = z.object({
   ),
   whatsapp_phone: z.preprocess(emptyToUndefined, z.string().trim().max(50).optional()),
   wechat_id: z.preprocess(emptyToUndefined, z.string().trim().max(200).optional()),
+  salutation: z.preprocess(emptyToUndefined, z.string().trim().max(50).optional()),
+  greeting_tone: z.preprocess(emptyToUndefined, z.enum(["formal", "casual"]).optional()),
   linkedin_url: z.preprocess(emptyToUndefined, z.string().trim().url("連結格式不正確").max(500).optional()),
   facebook_url: z.preprocess(emptyToUndefined, z.string().trim().url("連結格式不正確").max(500).optional()),
   met_date: z.preprocess(emptyToUndefined, z.string().optional()),

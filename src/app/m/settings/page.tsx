@@ -1,10 +1,11 @@
-import { CalendarHeart, PartyPopper, Tag } from "lucide-react";
+import { CalendarHeart, PartyPopper, Tag, UserPen } from "lucide-react";
 import Link from "next/link";
 
 import { SheetHeader } from "../sheet-ui";
 import { SystemPanel } from "./system-panel";
 
 const ITEMS = [
+  { href: "/m/names", icon: UserPen, title: "稱呼與名字", desc: "中英文名分開、怎麼稱呼他（王董／Kenny 哥）、正式或輕鬆" },
   { href: "/m/occasions", icon: PartyPopper, title: "節日提醒", desc: "自己加節日、改日期、提前幾天提醒、開關" },
   { href: "/m/festival-settings", icon: CalendarHeart, title: "人脈的節慶提醒", desc: "批量開啟或關閉：誰要收到節日與生日問候" },
   { href: "/m/tags", icon: Tag, title: "標籤管理", desc: "重新命名、合併、刪除標籤" },

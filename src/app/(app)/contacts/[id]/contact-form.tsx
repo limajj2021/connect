@@ -61,6 +61,23 @@ export function ContactForm({
           <Input id="name_en" name="name_en" defaultValue={contact.name_en ?? ""} />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="salutation">稱呼（祝福訊息用）</Label>
+          <Input id="salutation" name="salutation" defaultValue={contact.salutation ?? ""} placeholder="例如：龔董、Kenny 哥；留空自動" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="greeting_tone">語氣</Label>
+          <select
+            id="greeting_tone"
+            name="greeting_tone"
+            defaultValue={contact.greeting_tone ?? ""}
+            className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+          >
+            <option value="">自動（老闆正式、其他輕鬆）</option>
+            <option value="formal">正式（您）</option>
+            <option value="casual">輕鬆</option>
+          </select>
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="company">公司名稱</Label>
           <Input id="company" name="company" defaultValue={contact.company ?? ""} />
         </div>

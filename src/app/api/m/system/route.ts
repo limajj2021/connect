@@ -14,12 +14,12 @@ export const maxDuration = 60;
 
 async function migrationApplied(): Promise<boolean> {
   const supabase = createAdminClient();
-  const { error } = await supabase
-    .from("contact_interactions")
-    .select("kind, source_url, chat_import_id")
-    .eq("owner_id", await getOwnerUserId())
-    .limit(1);
-  return !error;
+  const ownerId = await getOwnerUserId();
+  const [interactions, contacts] = await Promise.all([
+    supabase.from("contact_interactions").select("kind, source_url, chat_import_id").eq("owner_id", ownerId).limit(1),
+    supabase.from("contacts").select("linkedin_url, salutation, greeting_tone").eq("owner_id", ownerId).limit(1),
+  ]);
+  return !interactions.error && !contacts.error;
 }
 
 export async function GET(request: Request) {

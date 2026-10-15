@@ -21,6 +21,9 @@ export interface MiniState {
 // The mini-form only shows these; everything else on the contact is left as is.
 const MINI_FIELDS = [
   "name",
+  "name_en",
+  "salutation",
+  "greeting_tone",
   "company",
   "title",
   "role_type",

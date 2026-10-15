@@ -45,6 +45,7 @@ export function ContactView({ contact }: { contact: ContactWithIndustries }) {
 
       <dl className="grid gap-4 sm:grid-cols-2">
         <Field label="英文姓名" value={contact.name_en} />
+        <Field label="稱呼" value={contact.salutation} />
         <Field label="公司名稱" value={contact.company} />
         <Field label="職稱" value={contact.title} />
         <Field label="國家 / 城市" value={[contact.country, contact.city].filter(Boolean).join(" / ") || null} />

@@ -48,7 +48,7 @@ export function SystemPanel() {
       <h2 className="text-sm font-semibold">系統狀態</h2>
       {status ? (
         <ul className="space-y-1 text-sm">
-          <li>{status.migration ? "✅ 資料庫已是最新" : "⚠️ 資料庫還沒更新（請執行 0006 migration）"}</li>
+          <li>{status.migration ? "✅ 資料庫已是最新" : "⚠️ 資料庫還沒更新（請在 Supabase 執行 0006、0007 migration）"}</li>
           <li>{status.richMenu === "current" ? "✅ 圖文選單是最新的兩分頁版" : "⚠️ 圖文選單還是舊版"}</li>
         </ul>
       ) : (

@@ -1,4 +1,4 @@
-import type { RoleType } from "@/types/database";
+import { type NamedPerson, salutationFor, toneFor } from "@/lib/contacts/naming";
 
 // "festival" covers every owner-editable greeting occasion (春節, 聖誕節, 跨年,
 // or anything else added from the LIFF "節日" page) — one generic template
@@ -11,11 +11,7 @@ export const GREETING_LABELS: Record<GreetingKind, string> = {
   hello: "近況問候",
 };
 
-interface Person {
-  name: string;
-  title: string | null;
-  role_type: RoleType;
-}
+type Person = NamedPerson;
 
 // Each kind has formal (老闆) and casual variants; "換一句" cycles the index.
 const TEMPLATES: Record<GreetingKind, { formal: string[]; casual: string[]; broadcast: string[] }> = {
@@ -42,37 +38,14 @@ const TEMPLATES: Record<GreetingKind, { formal: string[]; casual: string[]; broa
   },
 };
 
-const HONORIFIC_RULES: [RegExp, string][] = [
-  [/董事長|董事/, "董"],
-  [/總經理|總裁|執行長|CEO|總監|副總/i, "總"],
-  [/經理/, "經理"],
-  [/協理/, "協理"],
-  [/律師/, "律師"],
-  [/會計師/, "會計師"],
-  [/醫師/, "醫師"],
-  [/教授/, "教授"],
-  [/老師/, "老師"],
-];
-
-/** How to address someone: 王董 / 陳總 / 林經理 for bosses, first name otherwise. */
+/** How to address someone: what you set on the contact, else 王董 / 陳總 / 林經理 for bosses, first name otherwise. */
 export function salutation(person: Person): string {
-  const name = person.name.trim();
-  const isCjk = /^[一-鿿]{2,4}$/.test(name);
-  if (person.role_type === "boss" || person.title) {
-    for (const [re, suffix] of HONORIFIC_RULES) {
-      if (person.title && re.test(person.title) && isCjk) return `${name[0]}${suffix}`;
-    }
-  }
-  // A boss with no recognisable title: 王總 is the common, safe address in Taiwan.
-  if (person.role_type === "boss") return isCjk ? `${name[0]}總` : name;
-  // Casual: 王小明 → 小明; English or 2-char names stay as-is.
-  if (isCjk && name.length === 3) return name.slice(1);
-  return name;
+  return salutationFor(person);
 }
 
 export function greetingVariants(kind: GreetingKind, person: Person | null, occasionName?: string): string[] {
   const set = TEMPLATES[kind];
-  const list = person ? (person.role_type === "boss" ? set.formal : set.casual) : set.broadcast;
+  const list = person ? (toneFor(person) === "formal" ? set.formal : set.casual) : set.broadcast;
   const who = person ? salutation(person) : "";
   return list.map((t) => t.replaceAll("{稱呼}", who).replaceAll("{節日}", occasionName ?? "佳節"));
 }

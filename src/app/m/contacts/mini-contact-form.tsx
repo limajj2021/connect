@@ -10,7 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsInput } from "@/components/tags-input";
 import type { InteractionRow } from "@/lib/bot/data";
-import type { ContactRow } from "@/types/database";
+import { SalutationPicker } from "@/components/salutation-picker";
+import { splitName } from "@/lib/contacts/naming";
+import type { ContactRow, GreetingTone, RoleType } from "@/types/database";
 
 import { InteractionTimeline } from "./interaction-timeline";
 
@@ -33,7 +35,13 @@ function Field({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} defaultValue={defaultValue ?? ""} aria-invalid={Boolean(error)} {...props} />
+      <Input
+        id={name}
+        name={name}
+        {...(props.value === undefined ? { defaultValue: defaultValue ?? "" } : {})}
+        aria-invalid={Boolean(error)}
+        {...props}
+      />
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
@@ -77,6 +85,12 @@ export function MiniContactForm({
   const [deleted, setDeleted] = useState<MiniState | null>(null);
   const [deleting, startDelete] = useTransition();
   const [role, setRole] = useState<string>(contact?.role_type ?? "unclassified");
+  const [name, setName] = useState(contact?.name ?? prefillName ?? "");
+  const [nameEn, setNameEn] = useState(contact?.name_en ?? "");
+  const [title, setTitle] = useState(contact?.title ?? "");
+  const [salutation, setSalutation] = useState(contact?.salutation ?? "");
+  const [tone, setTone] = useState<GreetingTone | "">(contact?.greeting_tone ?? "");
+  const split = splitName(name, nameEn);
   const err = (field: string) => state.fieldErrors?.[field];
 
   useEffect(() => {
@@ -106,10 +120,25 @@ export function MiniContactForm({
       ) : null}
 
       <Section title="基本資料">
-        <Field name="name" label="姓名 *" defaultValue={contact?.name ?? prefillName} required error={err("name")} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field name="name" label="中文名 *" value={name} onChange={(e) => setName(e.target.value)} required error={err("name")} />
+          <Field name="name_en" label="英文名" value={nameEn} onChange={(e) => setNameEn(e.target.value)} autoCapitalize="words" />
+        </div>
+        {split ? (
+          <button
+            type="button"
+            onClick={() => {
+              setName(split.zh);
+              setNameEn(split.en);
+            }}
+            className="w-full rounded-xl bg-[var(--brand-soft)] px-3 py-2 text-left text-xs text-[var(--brand-ink)]"
+          >
+            💡 拆成 中文「{split.zh}」＋ 英文「{split.en}」？點一下套用
+          </button>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
           <Field name="company" label="公司" defaultValue={contact?.company} />
-          <Field name="title" label="職稱" defaultValue={contact?.title} />
+          <Field name="title" label="職稱" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label>身分</Label>
@@ -137,6 +166,17 @@ export function MiniContactForm({
           <Checkbox name="is_important" defaultChecked={contact?.is_important ?? false} />
           重要人脈
         </label>
+      </Section>
+
+      <Section title="怎麼稱呼他">
+        <p className="text-xs text-muted-foreground">傳祝福、AI 客製化訊息都會用這個稱呼和語氣。</p>
+        <SalutationPicker
+          person={{ name, name_en: nameEn, title: title || null, role_type: role as RoleType }}
+          salutation={salutation}
+          onSalutationChange={setSalutation}
+          tone={tone}
+          onToneChange={setTone}
+        />
       </Section>
 
       <Section title="聯絡方式">

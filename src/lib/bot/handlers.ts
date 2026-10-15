@@ -54,6 +54,8 @@ import { milestoneMessages } from "./chat-milestones";
 import { type ContactDraft, extractContactFields, extractFromCommand, normalizeText } from "./extract";
 import { type Intent, parseIntent } from "./intent";
 import { type CollectState, appendToCollect, finalizeByName, finalizeNew, finalizeToContact, startCollect } from "./forward";
+import { toneFor } from "@/lib/contacts/naming";
+
 import { GREETING_LABELS, type GreetingKind, greetingText, salutation } from "./templates";
 import { findSocialLinks } from "./social";
 import {
@@ -360,6 +362,14 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
     }
     case "keep_in_touch":
       return keepInTouchMessages(ctx);
+    case "salutation": {
+      const contact = (await findContactByExactName(ctx, intent.name))[0] ?? (await searchContacts(ctx, intent.name, 1))[0];
+      if (!contact) return [text(`找不到「${intent.name}」。`, MAIN_QUICK)];
+      const updated = await updateContact(ctx, contact.id, { salutation: intent.value });
+      return [
+        text(`👌 之後傳訊息給 ${updated.name} 會稱呼「${intent.value}」（${toneFor(updated) === "formal" ? "正式語氣" : "輕鬆語氣"}）。\n例如：${greetingText("hello", updated)}`, MAIN_QUICK),
+      ];
+    }
     case "collect_target":
       return handleUnknown(ctx, intent.text);
     case "unknown":
@@ -607,7 +617,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       const occasion = kind === "festival" ? (occasionName ?? "節日") : kind === "birthday" ? "生日" : "近況問候";
       const prompt = [
         `幫我用繁體中文寫一句傳給朋友的 LINE 訊息，場合是：${occasion}。`,
-        `對方稱呼：${salutation(contact)}；${contact.role_type === "boss" ? "語氣正式、有禮貌" : "語氣輕鬆、自然"}。`,
+        `開頭稱呼對方「${salutation(contact)}」（照這個寫，不要改成別的稱呼）；${toneFor(contact) === "formal" ? "語氣正式、有禮貌，用「您」" : "語氣輕鬆、自然，像熟朋友，用「你」"}。`,
         touch ? `我們最近一次聊到：「${touch.content.slice(0, 100)}」，如果合適可以自然地提到，讓對方感覺到我有在關心他。` : "",
         "只要回一句訊息本文（不要加任何說明、引號或開頭「這是您要的」之類的話），50 字以內，可以加 1 個表情符號。",
       ]

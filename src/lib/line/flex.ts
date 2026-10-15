@@ -256,6 +256,9 @@ export type ContactForCard = Pick<
   ContactRow,
   | "id"
   | "name"
+  | "name_en"
+  | "salutation"
+  | "greeting_tone"
   | "company"
   | "title"
   | "role_type"
@@ -327,6 +330,8 @@ function touchLine(touch: LastTouch): string {
 
 export function contactBubble(contact: ContactForCard, links?: ContactLinks, lastTouch?: LastTouch, latestPost?: LastTouch) {
   const lines: [string, string | null][] = [
+    ["英文名", contact.name_en],
+    ["稱呼", contact.salutation],
     ["公司", contact.company],
     ["職稱", contact.title],
     ["身分", ROLE_LABEL[contact.role_type] ?? null],
@@ -549,6 +554,7 @@ export function helpMessages(): LineMessage[] {
         "👋 久沒聯絡（★ 重要人脈太久沒聊的）",
         "📜 歷史 王小明（看完整溝通節點）",
         "🗒 備註 王小明 喜歡喝咖啡（長期不變的事）",
+        "🙋 稱呼 王小明 小明哥（傳訊息時怎麼叫他；批量設定在 設定 → 稱呼與名字）",
         "📝 待辦 寄報價給王小明 明天",
         "",
         "💬 到好友聊天室長按訊息 →「轉傳」給我 → 選是誰 → AI 整理成溝通節點",

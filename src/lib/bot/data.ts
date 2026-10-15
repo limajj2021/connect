@@ -20,7 +20,7 @@ export interface BotCtx {
 }
 
 export const CONTACT_CARD_COLUMNS =
-  "id, name, company, title, role_type, phone, email, line_display_name, line_id, whatsapp_phone, wechat_id, linkedin_url, facebook_url, birthday_month, birthday_day, notes, is_important";
+  "id, name, name_en, salutation, greeting_tone, company, title, role_type, phone, email, line_display_name, line_id, whatsapp_phone, wechat_id, linkedin_url, facebook_url, birthday_month, birthday_day, notes, is_important";
 
 /** Strips characters that have meaning inside a PostgREST `or=(...)` filter. */
 function sanitizeTerm(term: string) {
@@ -222,7 +222,7 @@ export async function createMeeting(
 
 export type ReminderContact = Pick<
   ContactForCard,
-  "id" | "name" | "title" | "role_type" | "phone" | "whatsapp_phone" | "wechat_id" | "line_id"
+  "id" | "name" | "name_en" | "salutation" | "greeting_tone" | "title" | "role_type" | "phone" | "whatsapp_phone" | "wechat_id" | "line_id"
 > & { role_type: RoleType };
 
 export interface BotReminder {
@@ -237,7 +237,7 @@ export interface BotReminder {
 }
 
 const REMINDER_COLUMNS =
-  "id, reminder_type, festival_key, festival_date, occurrence_year, due_date, notes, contact:contacts(id, name, title, role_type, phone, whatsapp_phone, wechat_id, line_id)";
+  "id, reminder_type, festival_key, festival_date, occurrence_year, due_date, notes, contact:contacts(id, name, name_en, salutation, greeting_tone, title, role_type, phone, whatsapp_phone, wechat_id, line_id)";
 
 export async function listPendingReminders(
   ctx: BotCtx,

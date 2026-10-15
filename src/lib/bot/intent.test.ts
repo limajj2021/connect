@@ -102,3 +102,10 @@ describe("forwarded chats", () => {
     expect(parseIntent("好的謝謝，明天見").kind).toBe("unknown");
   });
 });
+
+describe("salutation intent", () => {
+  it("sets how someone is addressed", () => {
+    expect(parseIntent("稱呼 Kenny Kenny 哥")).toEqual({ kind: "salutation", name: "Kenny", value: "Kenny 哥" });
+    expect(parseIntent("稱謂 王大明 王董")).toEqual({ kind: "salutation", name: "王大明", value: "王董" });
+  });
+});

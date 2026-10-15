@@ -31,6 +31,10 @@ export interface ContactRow {
   wechat_id: string | null;
   linkedin_url: string | null;
   facebook_url: string | null;
+  /** Custom form of address in greetings ("龔董", "Kenny 哥"); null = derived. */
+  salutation: string | null;
+  /** Greeting register; null = by role (老闆 formal, others casual). */
+  greeting_tone: GreetingTone | null;
   met_date: string | null;
   met_channel: string | null;
   birthday_month: number | null;
@@ -56,6 +60,8 @@ export interface ContactInteractionRow {
 }
 
 export type InteractionKind = "chat" | "post" | "sent";
+
+export type GreetingTone = "formal" | "casual";
 
 export interface IndustryRow {
   id: string;

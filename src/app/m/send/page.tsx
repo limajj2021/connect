@@ -31,7 +31,7 @@ export default async function MiniSendPage(props: PageProps<"/m/send">) {
   const ownerId = await getOwnerUserId();
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, name, title, role_type, phone, whatsapp_phone, wechat_id")
+    .select("id, name, name_en, salutation, greeting_tone, title, role_type, phone, whatsapp_phone, wechat_id")
     .eq("owner_id", ownerId)
     .eq("id", contactId)
     .maybeSingle();
