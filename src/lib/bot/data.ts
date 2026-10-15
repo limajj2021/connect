@@ -249,7 +249,7 @@ export async function listPendingReminders(
   return (data ?? []) as unknown as BotReminder[];
 }
 
-export async function setReminderStatus(ctx: BotCtx, ids: string[], status: TaskStatus) {
+export async function setReminderStatus(ctx: OwnerCtx, ids: string[], status: TaskStatus) {
   if (ids.length === 0) return;
   const { error } = await ctx.supabase
     .from("reminders")
@@ -330,7 +330,8 @@ export interface InteractionRow extends LastTouch {
 }
 
 /** Reading/writing interactions only ever needs the owner-scoped client. */
-type InteractionCtx = Pick<BotCtx, "supabase" | "ownerId">;
+export type OwnerCtx = Pick<BotCtx, "supabase" | "ownerId">;
+type InteractionCtx = OwnerCtx;
 
 export async function createInteraction(ctx: InteractionCtx, contactId: string, content: string, occurredOn: string) {
   const { error } = await ctx.supabase

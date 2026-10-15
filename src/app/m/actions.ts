@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { clearShots, createBatch, loadBatch } from "@/lib/bot/batch";
+import { createInteraction, setReminderStatus } from "@/lib/bot/data";
 import { parseContactFormData } from "@/lib/contacts/form";
 import { setContactTags } from "@/lib/mini/tags";
+import { taipeiToday } from "@/lib/format-date";
 import { verifyScope } from "@/lib/mini/token";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
 
@@ -146,5 +148,36 @@ export async function saveMiniBatch(token: string, _prev: MiniState, formData: F
   } catch (error) {
     console.error("[mini-batch] save failed", error);
     return { error: "儲存失敗，請稍後再試（這批名單還在，不會遺失）" };
+  }
+}
+
+export interface SendState {
+  ok?: boolean;
+  error?: string;
+}
+
+/**
+ * /m/send: records that a greeting actually went out — a real signal from
+ * LIFF's shareTargetPicker on LINE, or a one-tap self-report for
+ * WhatsApp/WeChat. Marks the related reminder done (if any) and logs it as
+ * an interaction, so "上次聊到" stays current without typing anything.
+ */
+export async function confirmSend(
+  token: string,
+  contactId: string,
+  opts: { reminderId?: string; channelLabel: string; occasionLabel: string },
+): Promise<SendState> {
+  if (!verifyScope(token, `send:${contactId}`)) return { error: "連結已失效，請回 LINE 重新開啟" };
+  const supabase = createAdminClient();
+  const ownerId = await getOwnerUserId();
+  const ctx = { supabase, ownerId };
+  try {
+    if (opts.reminderId) await setReminderStatus(ctx, [opts.reminderId], "completed");
+    await createInteraction(ctx, contactId, `已透過 ${opts.channelLabel} 傳送${opts.occasionLabel}`, taipeiToday());
+    refreshWeb(contactId);
+    return { ok: true };
+  } catch (error) {
+    console.error("[mini-send] confirm failed", error);
+    return { error: "記錄失敗，請稍後再試" };
   }
 }

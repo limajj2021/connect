@@ -12,6 +12,22 @@ import { greetingText } from "./templates";
 /** Birthdays show up this many days ahead; festival reminders already carry their lead time. */
 export const BIRTHDAY_LOOKAHEAD_DAYS = 3;
 
+/**
+ * A reminder nobody confirmed sending stays `pending` forever, so without
+ * this it would get pushed once (when it first becomes due) and then never
+ * again — easy to lose track of. Every `FOLLOWUP_INTERVAL_DAYS` after that,
+ * the push dedupe key changes, so it gets pushed again exactly once more —
+ * a periodic nudge, not a daily one.
+ */
+export const FOLLOWUP_INTERVAL_DAYS = 7;
+
+/** The daily-push dedupe key's stage: advances every FOLLOWUP_INTERVAL_DAYS once a reminder is overdue. */
+export function reminderStage(today: string, dueDate: string): string {
+  if (dueDate > today) return "early";
+  const overdueDays = daysBetween(dueDate, today);
+  return overdueDays < FOLLOWUP_INTERVAL_DAYS ? "due" : `followup${Math.floor(overdueDays / FOLLOWUP_INTERVAL_DAYS)}`;
+}
+
 function whenLabel(today: string, ymd: string) {
   const diff = daysBetween(today, ymd);
   if (diff === 0) return "今天";
@@ -120,7 +136,7 @@ export async function buildDigest(
     // only birthdays are surfaced a few days early.
     if (!isBirthday && reminder.due_date > today) continue;
     if (isBirthday && !reminder.contact) continue;
-    const stage = reminder.due_date > today ? "early" : "due";
+    const stage = reminderStage(today, reminder.due_date);
     const key = `line:reminder:${reminder.id}:${stage}`;
     if (opts.skipReminderIds?.has(key)) continue;
     reminderKeys.push({ id: reminder.id, key });

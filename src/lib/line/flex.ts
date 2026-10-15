@@ -1,5 +1,7 @@
 import type { ContactDraft } from "@/lib/bot/extract";
 import { GREETING_LABELS, type GreetingKind } from "@/lib/bot/templates";
+import { sendMessageUrl } from "@/lib/mini/links";
+import { isLinkSigningConfigured } from "@/lib/mini/token";
 import type { ContactRow, TaskRow } from "@/types/database";
 
 import type { LineMessage } from "./api";
@@ -330,13 +332,23 @@ export function sendMessageBubble(opts: {
   const { contact, messageText } = opts;
   const waPhone = contact?.whatsapp_phone ?? null;
   const occasionParam: Record<string, string> = opts.occasionName ? { o: opts.occasionName } : {};
+  // Only a single, specific contact can have a send tracked (a broadcast has
+  // no one contact to credit it to, and no way to know who actually got it).
+  const trackSend = contact && isLinkSigningConfigured();
+  const send = (channel: "line" | "whatsapp" | "wechat") =>
+    trackSend
+      ? sendMessageUrl({ contactId: contact.id, channel, kind: opts.kind, occasionName: opts.occasionName, variant: opts.variant, reminderId: opts.reminderId })
+      : null;
+  const wechatUrl = send("wechat");
+  const whatsappHref = waPhone ? (send("whatsapp") ?? whatsappUrl(waPhone, messageText)) : null;
   const buttons = [
-    button(uri(contact ? "LINE 傳送（選他）" : "LINE 群發（可多選）", lineShareUrl(messageText)), "primary"),
-    button(waPhone ? uri("WhatsApp 直接開聊天", whatsappUrl(waPhone, messageText) ?? "") : null),
+    button(uri(contact ? "LINE 傳送（選他）" : "LINE 群發（可多選）", send("line") ?? lineShareUrl(messageText)), "primary"),
+    button(whatsappHref ? uri("WhatsApp 直接開聊天", whatsappHref) : null),
     button(contact?.line_id ? uri("開他的 LINE 個人頁", lineProfileUrl(contact.line_id)) : null),
     button(
       contact?.wechat_id || !contact
-        ? postback("WeChat：給我純文字複製", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant })
+        ? (wechatUrl ? uri("WeChat：給我純文字複製", wechatUrl) : null) ??
+            postback("WeChat：給我純文字複製", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant })
         : null,
     ),
     button(
@@ -345,7 +357,9 @@ export function sendMessageBubble(opts: {
         : null,
     ),
     button(postback("🔄 換一句", { a: "msg", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant + 1, ...(opts.reminderId ? { r: opts.reminderId } : {}) })),
-    button(opts.reminderId ? postback("✅ 已傳，完成", { a: "rem_done", id: opts.reminderId }, "已傳") : null),
+    // When sends are tracked, the send flow itself has its own "我傳了" / auto
+    // confirm (and also logs the interaction) — this plain button would skip that.
+    button(opts.reminderId && !trackSend ? postback("✅ 已傳，完成", { a: "rem_done", id: opts.reminderId }, "已傳") : null),
   ];
   return bubble({
     title: opts.title,

@@ -26,3 +26,28 @@ export function contactListUrl(): string | null {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
   return liffId ? `https://liff.line.me/${liffId}/contacts` : null;
 }
+
+/**
+ * Opens the one-screen "send" flow (/m/send): tries LIFF's shareTargetPicker
+ * for a real "it was actually sent" signal on LINE, falls back to a manual
+ * confirm button for WhatsApp/WeChat — see src/app/m/send. `kind`/`occasion`
+ * mirror the bot's own greeting generation so the message text is computed
+ * once, not duplicated into the URL.
+ */
+export function sendMessageUrl(opts: {
+  contactId: string;
+  channel: "line" | "whatsapp" | "wechat";
+  kind: "birthday" | "festival" | "hello";
+  occasionName?: string;
+  variant?: number;
+  reminderId?: string;
+}): string {
+  return miniUrl(`/send`, `send:${opts.contactId}`, {
+    contact: opts.contactId,
+    ch: opts.channel,
+    k: opts.kind,
+    ...(opts.occasionName ? { o: opts.occasionName } : {}),
+    v: String(opts.variant ?? 0),
+    ...(opts.reminderId ? { r: opts.reminderId } : {}),
+  });
+}
