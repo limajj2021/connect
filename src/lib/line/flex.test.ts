@@ -16,6 +16,8 @@ const baseContact: ContactForCard = {
   line_id: null,
   whatsapp_phone: null,
   wechat_id: null,
+  linkedin_url: null,
+  facebook_url: null,
   birthday_month: null,
   birthday_day: null,
   notes: null,

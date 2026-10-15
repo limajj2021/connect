@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ContactForCard } from "@/lib/line/flex";
-import type { ReminderType, RoleType, TaskStatus } from "@/types/database";
+import type { InteractionKind, ReminderType, RoleType, TaskStatus } from "@/types/database";
 
 import type { ContactDraft } from "./extract";
 
@@ -20,7 +20,7 @@ export interface BotCtx {
 }
 
 export const CONTACT_CARD_COLUMNS =
-  "id, name, company, title, role_type, phone, email, line_display_name, line_id, whatsapp_phone, wechat_id, birthday_month, birthday_day, notes, is_important";
+  "id, name, company, title, role_type, phone, email, line_display_name, line_id, whatsapp_phone, wechat_id, linkedin_url, facebook_url, birthday_month, birthday_day, notes, is_important";
 
 /** Strips characters that have meaning inside a PostgREST `or=(...)` filter. */
 function sanitizeTerm(term: string) {
@@ -170,10 +170,19 @@ export async function listPendingTasks(ctx: BotCtx, opts: { dueOnOrBefore?: stri
   return { tasks: (data ?? []) as unknown as BotTask[], total: count ?? 0 };
 }
 
-export async function createTask(ctx: BotCtx, task: { title: string; due_date?: string; contact_id?: string }) {
+export async function createTask(
+  ctx: BotCtx,
+  task: { title: string; due_date?: string; contact_id?: string; source_type?: "manual" | "chat_extraction" },
+) {
   const { data, error } = await ctx.supabase
     .from("tasks")
-    .insert({ owner_id: ctx.ownerId, title: task.title, due_date: task.due_date ?? null, contact_id: task.contact_id ?? null, source_type: "manual" })
+    .insert({
+      owner_id: ctx.ownerId,
+      title: task.title,
+      due_date: task.due_date ?? null,
+      contact_id: task.contact_id ?? null,
+      source_type: task.source_type ?? "manual",
+    })
     .select("id")
     .single();
   if (error) throw error;
@@ -327,27 +336,50 @@ export interface LastTouch {
 
 export interface InteractionRow extends LastTouch {
   id: string;
+  kind: InteractionKind;
+  source_url: string | null;
 }
 
 /** Reading/writing interactions only ever needs the owner-scoped client. */
 export type OwnerCtx = Pick<BotCtx, "supabase" | "ownerId">;
 type InteractionCtx = OwnerCtx;
 
-export async function createInteraction(ctx: InteractionCtx, contactId: string, content: string, occurredOn: string) {
-  const { error } = await ctx.supabase
-    .from("contact_interactions")
-    .insert({ owner_id: ctx.ownerId, contact_id: contactId, occurred_on: occurredOn, content: content.slice(0, 1000) });
+export async function createInteraction(
+  ctx: InteractionCtx,
+  contactId: string,
+  content: string,
+  occurredOn: string,
+  opts: { kind?: InteractionKind; sourceUrl?: string | null; chatImportId?: string | null } = {},
+) {
+  const { error } = await ctx.supabase.from("contact_interactions").insert({
+    owner_id: ctx.ownerId,
+    contact_id: contactId,
+    occurred_on: occurredOn,
+    content: content.slice(0, 1000),
+    kind: opts.kind ?? "chat",
+    source_url: opts.sourceUrl ?? null,
+    chat_import_id: opts.chatImportId ?? null,
+  });
   if (error) throw error;
 }
 
-/** The most recent touch for each of the given contacts (missing ones just aren't in the map). */
-export async function lastTouchesFor(ctx: InteractionCtx, contactIds: string[]): Promise<Map<string, LastTouch>> {
+/**
+ * The most recent touch of one kind for each of the given contacts (missing
+ * ones just aren't in the map). "上次聊到" is the latest `chat` — a confirmed
+ * greeting send isn't a topic to pick up from — and "最近動態" the latest `post`.
+ */
+export async function lastTouchesFor(
+  ctx: InteractionCtx,
+  contactIds: string[],
+  kind: InteractionKind = "chat",
+): Promise<Map<string, LastTouch>> {
   const map = new Map<string, LastTouch>();
   if (contactIds.length === 0) return map;
   const { data, error } = await ctx.supabase
     .from("contact_interactions")
     .select("contact_id, occurred_on, content")
     .eq("owner_id", ctx.ownerId)
+    .eq("kind", kind)
     .in("contact_id", contactIds)
     .order("occurred_on", { ascending: false })
     .order("created_at", { ascending: false })
@@ -368,7 +400,7 @@ export async function lastTouchFor(ctx: InteractionCtx, contactId: string): Prom
 export async function listInteractions(ctx: InteractionCtx, contactId: string, limit = 50): Promise<InteractionRow[]> {
   const { data, error } = await ctx.supabase
     .from("contact_interactions")
-    .select("id, occurred_on, content")
+    .select("id, occurred_on, content, kind, source_url")
     .eq("owner_id", ctx.ownerId)
     .eq("contact_id", contactId)
     .order("occurred_on", { ascending: false })

@@ -6,6 +6,7 @@ import { type ContactForCard, MAIN_QUICK, carousel, postback, text, uri } from "
 import { webUrl } from "@/lib/line/links";
 
 import { card } from "./cards";
+import { MILESTONE_BUDGET_MS, milestoneMessages } from "./chat-milestones";
 import {
   type BotCtx,
   contactsMentionedIn,
@@ -168,17 +169,23 @@ async function summary(ctx: BotCtx, contact: ContactForCard, count: number, impo
   const filled = Object.keys(patch)
     .map((k) => FILL_LABELS[k])
     .filter(Boolean);
+  const nodes = await milestoneMessages(ctx, importId, { deadline: Date.now() + MILESTONE_BUDGET_MS });
   return [
     text(
       [
         created ? `✅ 已建立「${contact.name}」` : null,
         `💬 已把 ${count} 則訊息存到「${contact.name}」的聊天紀錄`,
-        filled.length > 0 ? `✏️ 從內容補上：${[...new Set(filled)].join("、")}（不對可在卡片「⋯ 更多」修改）` : null,
+        filled.length > 0 ? `✏️ 從內容補上：${[...new Set(filled)].join("、")}（不對可在卡片「📇 詳細」修改）` : null,
+        nodes.ok ? null : `\n${nodes.note}`,
       ]
         .filter(Boolean)
         .join("\n"),
     ),
-    carousel(contact.name, [await card(ctx, contact)], [uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)]),
+    carousel(
+      contact.name,
+      [...(nodes.ok ? [nodes.bubble] : []), await card(ctx, contact)],
+      [...(nodes.ok ? [] : [nodes.retry]), uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)],
+    ),
   ];
 }
 

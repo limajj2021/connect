@@ -48,12 +48,26 @@ import {
 } from "./data";
 import { handleBatchPostback } from "./batch-chat";
 import { extractDueDate, formatShortDate } from "./dates";
-import { birthdayBubble, buildDigest, festivalGroupBubble, otherReminderBubble } from "./digest";
+import { birthdayBubble, buildDigest, festivalGroupBubble, keepInTouchMessages, otherReminderBubble } from "./digest";
 import { card, cards } from "./cards";
+import { milestoneMessages } from "./chat-milestones";
 import { type ContactDraft, extractContactFields, extractFromCommand, normalizeText } from "./extract";
 import { type Intent, parseIntent } from "./intent";
 import { type CollectState, appendToCollect, finalizeByName, finalizeNew, finalizeToContact, startCollect } from "./forward";
 import { GREETING_LABELS, type GreetingKind, greetingText, salutation } from "./templates";
+import { findSocialLinks } from "./social";
+import {
+  type PostNoteState,
+  type PostWaitState,
+  type SocialState,
+  addPostNote,
+  answerWhose,
+  assignSocial,
+  logPost,
+  receivePost,
+  receiveSocialLink,
+  startPost,
+} from "./social-flow";
 
 // ---------------------------------------------------------------------------
 // Conversation state
@@ -64,7 +78,10 @@ export type FlowState =
   | { flow: "await_add" }
   | { flow: "await_search" }
   | { flow: "confirm_delete"; contactId: string }
-  | CollectState;
+  | CollectState
+  | SocialState
+  | PostWaitState
+  | PostNoteState;
 
 const CANCEL_QUICK = [postback("取消", { a: "stop" }, "取消")];
 
@@ -88,7 +105,7 @@ function editFormNotice(contact: Pick<ContactForCard, "id" | "name">): LineMessa
 async function createFromDraft(ctx: BotCtx, draft: ContactDraft): Promise<LineMessage[]> {
   const contact = await createContact(ctx, draft);
   await saveSession(ctx, null);
-  return [text(`✅ 已建立「${contact.name}」，缺的資料按「✏️ 補齊資料」一次填完：`), carousel(contact.name, [await card(ctx, contact)], MAIN_QUICK)];
+  return [text(`✅ 已建立「${contact.name}」，缺的資料按「📇 補資料」一次填完：`), carousel(contact.name, [await card(ctx, contact)], MAIN_QUICK)];
 }
 
 async function startAddContact(ctx: BotCtx, args: string): Promise<LineMessage[]> {
@@ -268,8 +285,9 @@ async function showHistory(ctx: BotCtx, name: string): Promise<LineMessage[]> {
   if (history.length === 0) {
     return [text(`還沒有跟 ${contact.name} 的交流紀錄。打「交流 ${contact.name} ...」開始記。`, MAIN_QUICK)];
   }
-  const lines = history.map((h) => `${formatShortDate(h.occurred_on)}：${h.content.slice(0, 100)}`);
-  return [text(`${contact.name} 的交流紀錄（最近 ${history.length} 筆）：\n${lines.join("\n")}`, MAIN_QUICK)];
+  const icon = { chat: "💬", post: "📣", sent: "✉️" } as const;
+  const lines = history.map((h) => `${icon[h.kind] ?? "💬"} ${formatShortDate(h.occurred_on)}：${h.content.slice(0, 100)}`);
+  return [text(`${contact.name} 的溝通節點（最近 ${history.length} 筆）：\n${lines.join("\n")}`, MAIN_QUICK)];
 }
 
 async function handleUnknown(ctx: BotCtx, input: string): Promise<LineMessage[]> {
@@ -286,8 +304,7 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
     case "help":
       return helpMessages();
     case "today": {
-      const digest = await buildDigest(ctx);
-      return digest.hasContent ? digest.messages : [text(`${formatShortDate(ctx.today)} 今天沒有要處理的事 🎉`, MAIN_QUICK)];
+      return (await buildDigest(ctx, { alwaysShow: true })).messages;
     }
     case "cancel":
       return [text("好，已取消。", MAIN_QUICK)];
@@ -331,6 +348,18 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
       ];
     case "collect_start":
       return startCollect(ctx);
+    case "post": {
+      if (!intent.name) return startPost(ctx);
+      if (!intent.text) return startPost(ctx, intent.name);
+      const link = findSocialLinks(intent.text)[0];
+      if (link) {
+        const contact = (await findContactByExactName(ctx, intent.name))[0] ?? (await searchContacts(ctx, intent.name, 1))[0];
+        return receivePost(ctx, { flow: "post_wait", contactId: contact?.id }, { link, text: intent.text });
+      }
+      return logPost(ctx, intent.name, intent.text);
+    }
+    case "keep_in_touch":
+      return keepInTouchMessages(ctx);
     case "collect_target":
       return handleUnknown(ctx, intent.text);
     case "unknown":
@@ -354,6 +383,16 @@ async function handleFlowAnswer(ctx: BotCtx, state: FlowState, input: string): P
     case "confirm_delete":
       await saveSession(ctx, null);
       return [text("已取消刪除。", MAIN_QUICK)];
+    case "social":
+      return answerWhose(ctx, state, input);
+    case "post_wait":
+      return receivePost(ctx, state, { link: findSocialLinks(input)[0], text: input });
+    case "post_note":
+      // Only a short one-liner reads as "the gist of that post"; anything
+      // longer is most likely a forwarded message — handle it as usual.
+      if (input.length <= 80 && !input.includes("\n")) return addPostNote(ctx, state, input);
+      await saveSession(ctx, null);
+      return handleUnknown(ctx, input);
     case "draft": {
       const draft = { ...state.draft };
       if (state.editing === "name") {
@@ -391,6 +430,12 @@ export async function handleText(ctx: BotCtx, input: string): Promise<LineMessag
     }
   }
   if (state && state.flow !== "collect" && intent.kind === "unknown") return handleFlowAnswer(ctx, state, input);
+  // A LinkedIn / Facebook link (pasted, or shared from the app): a profile to
+  // save on someone's card, or a post of theirs to keep on their timeline.
+  if (intent.kind === "unknown") {
+    const link = findSocialLinks(input)[0];
+    if (link) return receiveSocialLink(ctx, link, input);
+  }
   return runIntent(ctx, intent);
 }
 
@@ -415,6 +460,8 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
         reminders: { kind: "list_reminders" },
         contacts: { kind: "list_contacts" },
         collect: { kind: "collect_start" },
+        keep: { kind: "keep_in_touch" },
+        post: { kind: "post" },
         help: { kind: "help" },
       };
       return runIntent(ctx, map[c ?? ""] ?? { kind: "help" });
@@ -422,6 +469,18 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
     case "batch_ok":
     case "batch_cancel":
       return handleBatchPostback(ctx, a);
+    // Switching rich-menu tabs also sends a postback; nothing to answer.
+    case "tab":
+      return [];
+    case "soc_to": {
+      const state = await loadSession<FlowState>(ctx);
+      if (state?.flow !== "social") return [text("這個選項已過期，請重新貼一次連結。", MAIN_QUICK)];
+      return assignSocial(ctx, state, id);
+    }
+    case "nodes": {
+      const nodes = await milestoneMessages(ctx, p.get("i") ?? "", { deadline: Date.now() + 45_000 });
+      return nodes.ok ? [carousel("溝通節點", [nodes.bubble])] : [text(nodes.note, [nodes.retry])];
+    }
     case "stop":
       await saveSession(ctx, null);
       return [text("好，先這樣。", MAIN_QUICK)];
@@ -497,7 +556,6 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
           occasionName,
           variant: 0,
           reminderId: r.id,
-          accent: "#a83232",
           aiAvailable: isAiConfigured(),
         }),
       );

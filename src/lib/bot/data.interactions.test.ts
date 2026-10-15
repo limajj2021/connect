@@ -29,8 +29,23 @@ describe("createInteraction", () => {
     const supabase = { from: () => builder };
     await createInteraction({ supabase, ownerId: "owner1" } as never, "contact1", "聊到他想換工作", "2026-10-15");
     expect((builder as { inserted: unknown[] }).inserted).toEqual([
-      { owner_id: "owner1", contact_id: "contact1", occurred_on: "2026-10-15", content: "聊到他想換工作" },
+      {
+        owner_id: "owner1",
+        contact_id: "contact1",
+        occurred_on: "2026-10-15",
+        content: "聊到他想換工作",
+        kind: "chat",
+        source_url: null,
+        chat_import_id: null,
+      },
     ]);
+  });
+
+  it("records a post with its link", async () => {
+    const builder = chainable([]);
+    const supabase = { from: () => builder };
+    await createInteraction({ supabase, ownerId: "owner1" } as never, "c1", "升任副總", "2026-10-15", { kind: "post", sourceUrl: "https://x.test/p" });
+    expect((builder as { inserted: { kind: string; source_url: string }[] }).inserted[0]).toMatchObject({ kind: "post", source_url: "https://x.test/p" });
   });
 });
 

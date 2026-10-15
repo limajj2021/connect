@@ -157,6 +157,24 @@ export function MiniContactForm({
           />
           <Field name="wechat_id" label="WeChat ID" defaultValue={contact?.wechat_id} autoCapitalize="none" />
         </div>
+        <Field
+          name="linkedin_url"
+          label="LinkedIn 個人頁"
+          inputMode="url"
+          autoCapitalize="none"
+          placeholder="linkedin.com/in/…"
+          defaultValue={contact?.linkedin_url}
+          error={err("linkedin_url")}
+        />
+        <Field
+          name="facebook_url"
+          label="Facebook 個人頁"
+          inputMode="url"
+          autoCapitalize="none"
+          placeholder="facebook.com/…"
+          defaultValue={contact?.facebook_url}
+          error={err("facebook_url")}
+        />
       </Section>
 
       <Section title="生日與提醒">

@@ -14,6 +14,7 @@ import { detectContactList } from "./contact-list";
 import { type BotCtx, loadSession } from "./data";
 import { extractFromScreenshot, looksLikeProfilePage, parseLineDisplayName } from "./extract";
 import { appendToCollect } from "./forward";
+import { receivePost } from "./social-flow";
 import { type FlowState, createFromScreenshot, handlePostback, handleText } from "./handlers";
 import { parseIntent } from "./intent";
 
@@ -42,6 +43,10 @@ async function handleImage(ctx: BotCtx, messageId: string, imageSet?: ImageSet):
   }
 
   const state = await loadSession<FlowState>(ctx);
+  if (state?.flow === "post_wait") {
+    // A screenshot of someone's LinkedIn / Facebook post, after 動態.
+    return receivePost(ctx, state, { text: ocr.text, fromImage: true });
+  }
   if (state?.flow === "collect") {
     // A chat screenshot while forwarding: keep its text with the other messages.
     return appendToCollect(ctx, state, [`［截圖］${ocr.text}`]);

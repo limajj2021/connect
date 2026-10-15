@@ -2,14 +2,20 @@
 /**
  * One-off setup for the LINE OA bot (idempotent — safe to re-run):
  *   1. points the channel's webhook at <APP_BASE_URL>/api/line/webhook and tests it
- *   2. (re)creates the 4-button rich menu from scripts/line/rich-menu.png and
- *      makes it the default for everyone who adds the account
+ *   2. (re)creates the two-tab rich menu (主選單 / 工具箱) from
+ *      scripts/line/rich-menu-{main,tools}.png, links the tabs with rich menu
+ *      aliases, and makes 主選單 the default for everyone
+ *
+ * Re-render the art after changing rich-menu-layout.mjs:
+ *   node scripts/line/render-rich-menu.mjs
  *
  * Usage:
  *   LINE_CHANNEL_ACCESS_TOKEN=... APP_BASE_URL=https://your-app.vercel.app [NEXT_PUBLIC_LIFF_ID=...] node scripts/line/setup-line.mjs
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+
+import { LAYOUT, MENU_H, MENU_W, TABS } from "./rich-menu-layout.mjs";
 
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, "");
@@ -20,7 +26,8 @@ if (!token || !baseUrl) {
 
 const API = "https://api.line.me";
 const DATA_API = "https://api-data.line.me";
-const MENU_NAME = "personal-crm-main";
+const OLD_MENU_NAME = "personal-crm-main";
+const MENU_PREFIX = "personal-crm-tab-";
 const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
 async function line(method, url, body, contentType = "application/json") {
@@ -40,36 +47,49 @@ await line("PUT", `${API}/v2/bot/channel/webhook/endpoint`, { endpoint });
 const test = await line("POST", `${API}/v2/bot/channel/webhook/test`, { endpoint });
 console.log("webhook:", endpoint, "test:", test.success ? "OK" : test);
 
-// 2. Rich menu: 2500x843, 3 cells on top (even thirds), 2 wider cells on the
-// bottom (only what's actually used day to day — 新增人脈/待辦/說明 are one
-// typed word away and don't need a button).
-const W = 2500;
-const H = 843;
-const top = (col) => ({ x: Math.round((W / 3) * col), y: 0, width: Math.round(W / 3), height: Math.round(H / 2) });
-const bottom = (col) => ({ x: Math.round((W / 2) * col), y: Math.round(H / 2), width: Math.round(W / 2), height: Math.round(H / 2) });
+// 2. Rich menu: two tabs (主選單 / 工具箱), switched by tapping the tab bar
+// (a "richmenuswitch" action between two rich menu aliases). Layout and art
+// come from rich-menu-layout.mjs / render-rich-menu.mjs.
 const cmd = (c, label) => ({ type: "postback", label, data: `a=cmd&c=${c}`, displayText: label });
-const liff = (path, label) => (liffId ? { type: "uri", label, uri: `https://liff.line.me/${liffId}${path}` } : cmd("search", label));
 
-const existing = await line("GET", `${API}/v2/bot/richmenu/list`);
-for (const menu of existing.richmenus ?? []) {
-  if (menu.name === MENU_NAME) await line("DELETE", `${API}/v2/bot/richmenu/${menu.richMenuId}`);
+function toAction(a) {
+  if (a.cmd) return cmd(a.cmd, a.label);
+  if (a.web) return { type: "uri", label: a.label, uri: `${baseUrl}${a.web}?openExternalBrowser=1` };
+  if (a.liff) return liffId ? { type: "uri", label: a.label, uri: `https://liff.line.me/${liffId}${a.liff}` } : cmd(a.fallback, a.label);
+  throw new Error(`unknown action ${JSON.stringify(a)}`);
 }
 
-const { richMenuId } = await line("POST", `${API}/v2/bot/richmenu`, {
-  size: { width: W, height: H },
-  selected: true,
-  name: MENU_NAME,
-  chatBarText: "選單",
-  areas: [
-    { bounds: top(0), action: cmd("today", "今日") },
-    // 人脈／節日／設定 open LIFF pages when a LIFF app is configured, otherwise fall back to 找人.
-    { bounds: top(1), action: liff("/contacts", "人脈") },
-    { bounds: top(2), action: cmd("reminders", "提醒") },
-    { bounds: bottom(0), action: liff("/occasions", "節日") },
-    { bounds: bottom(1), action: liff("/settings", "設定") },
-  ],
-});
-const image = await readFile(fileURLToPath(new URL("./rich-menu.png", import.meta.url)));
-await line("POST", `${DATA_API}/v2/bot/richmenu/${richMenuId}/content`, image, "image/png");
-await line("POST", `${API}/v2/bot/user/all/richmenu/${richMenuId}`);
-console.log("rich menu:", richMenuId, "set as default");
+// Earlier runs (and the old single-tab menu) — removed only after the new
+// menus are live and the aliases point at them.
+const existing = await line("GET", `${API}/v2/bot/richmenu/list`);
+const stale = (existing.richmenus ?? []).filter((m) => m.name === OLD_MENU_NAME || m.name.startsWith(MENU_PREFIX));
+
+const ids = {};
+for (const tab of TABS) {
+  const tabAreas = TABS.map((t) => ({
+    bounds: LAYOUT.tabs[t.key],
+    action: { type: "richmenuswitch", label: t.label, richMenuAliasId: t.alias, data: `a=tab&t=${t.key}` },
+  }));
+  const { richMenuId } = await line("POST", `${API}/v2/bot/richmenu`, {
+    size: { width: MENU_W, height: MENU_H },
+    selected: tab.key === "main",
+    name: `${MENU_PREFIX}${tab.key}`,
+    chatBarText: "選單",
+    areas: [...tabAreas, ...tab.cells.map((cell) => ({ bounds: cell.bounds, action: toAction(cell.action) }))],
+  });
+  const image = await readFile(fileURLToPath(new URL(`./rich-menu-${tab.key}.png`, import.meta.url)));
+  await line("POST", `${DATA_API}/v2/bot/richmenu/${richMenuId}/content`, image, "image/png");
+  ids[tab.key] = richMenuId;
+
+  // Point the alias at the new menu (create it the first time).
+  try {
+    await line("POST", `${API}/v2/bot/richmenu/alias/${tab.alias}`, { richMenuId });
+  } catch {
+    await line("POST", `${API}/v2/bot/richmenu/alias`, { richMenuAliasId: tab.alias, richMenuId });
+  }
+  console.log(`rich menu ${tab.key}:`, richMenuId, "alias", tab.alias);
+}
+await line("POST", `${API}/v2/bot/user/all/richmenu/${ids.main}`);
+console.log("default rich menu:", ids.main);
+for (const menu of stale) await line("DELETE", `${API}/v2/bot/richmenu/${menu.richMenuId}`);
+console.log("removed old menus:", stale.length);

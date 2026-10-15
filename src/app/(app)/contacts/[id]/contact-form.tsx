@@ -128,6 +128,16 @@ export function ContactForm({
           <Input id="wechat_id" name="wechat_id" defaultValue={contact.wechat_id ?? ""} />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="linkedin_url">LinkedIn</Label>
+          <Input id="linkedin_url" name="linkedin_url" defaultValue={contact.linkedin_url ?? ""} placeholder="https://www.linkedin.com/in/..." />
+          {fieldError("linkedin_url") ? <p className="text-sm text-destructive">{fieldError("linkedin_url")}</p> : null}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="facebook_url">Facebook</Label>
+          <Input id="facebook_url" name="facebook_url" defaultValue={contact.facebook_url ?? ""} placeholder="https://www.facebook.com/..." />
+          {fieldError("facebook_url") ? <p className="text-sm text-destructive">{fieldError("facebook_url")}</p> : null}
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="met_date">認識日期</Label>
           <Input id="met_date" name="met_date" type="date" defaultValue={contact.met_date ?? ""} />
         </div>

@@ -7,11 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLiff } from "@/lib/mini/liff-client";
 
+import { Segmented, SheetHeader } from "../sheet-ui";
+
 import { type DirectoryContact, type GroupBy, groupContacts } from "./directory-groups";
 
 function initials(name: string) {
   return name.trim().slice(0, 2);
 }
+
+function shortDate(ymd: string) {
+  return `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
+}
+
+function daysSince(ymd: string) {
+  return Math.max(0, Math.floor((Date.now() - Date.parse(`${ymd}T00:00:00+08:00`)) / 86_400_000));
+}
+
+const GROUP_OPTIONS = [
+  { value: "tag", label: "依標籤" },
+  { value: "role", label: "依身分" },
+  { value: "important", label: "★ 重要" },
+] as const;
 
 /**
  * Rich menu → 人脈: every contact, grouped by tag (or role), with search.
@@ -23,7 +39,10 @@ export function ContactDirectory() {
   const [contacts, setContacts] = useState<DirectoryContact[]>([]);
   const [newUrl, setNewUrl] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [groupBy, setGroupBy] = useState<GroupBy>("tag");
+  // Rich menu → 重要人脈 opens straight on the ★ view.
+  const [groupBy, setGroupBy] = useState<GroupBy>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "important" ? "important" : "tag",
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -72,56 +91,49 @@ export function ContactDirectory() {
 
   return (
     <div className="pb-24">
-      <div className="sticky top-0 z-10 space-y-2 border-b bg-background/95 p-3 backdrop-blur">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold">人脈（{contacts.length}）</h1>
-          <div className="flex rounded-lg border p-0.5 text-sm" role="tablist">
-            {(["tag", "role"] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={groupBy === key}
-                onClick={() => setGroupBy(key)}
-                className={`rounded-md px-3 py-1 ${groupBy === key ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                {key === "tag" ? "依標籤" : "依身分"}
-              </button>
-            ))}
+      <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+        <SheetHeader title={`人脈（${contacts.length}）`} subtitle="點一下看他的溝通節點、補資料">
+          <Segmented label="分組方式" options={GROUP_OPTIONS} value={groupBy} onChange={setGroupBy} />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜尋姓名、公司、標籤"
+              className="h-10 rounded-full border-2 border-primary pl-9"
+            />
           </div>
-        </div>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜尋姓名、公司、標籤" className="pl-8" />
-        </div>
-        {groups.length > 1 ? (
-          <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5">
-            {groups.map(([name, list]) => (
-              <a
-                key={name}
-                href={`#g-${encodeURIComponent(name)}`}
-                className="shrink-0 rounded-full border px-2.5 py-1 text-xs text-muted-foreground"
-              >
-                {name} {list.length}
-              </a>
-            ))}
-          </div>
-        ) : null}
+          {groups.length > 1 ? (
+            <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5">
+              {groups.map(([name, list]) => (
+                <a
+                  key={name}
+                  href={`#g-${encodeURIComponent(name)}`}
+                  className="shrink-0 rounded-full border px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {name} {list.length}
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </SheetHeader>
       </div>
 
       {groups.length === 0 ? (
-        <p className="p-6 text-center text-sm text-muted-foreground">{contacts.length === 0 ? "還沒有任何人脈" : "找不到符合的人脈"}</p>
+        <p className="p-6 text-center text-sm text-muted-foreground">
+          {contacts.length === 0 ? "還沒有任何人脈" : groupBy === "important" && !query ? "還沒有 ★ 重要人脈，在人脈頁勾選「重要」" : "找不到符合的人脈"}
+        </p>
       ) : (
         groups.map(([name, list]) => (
-          <section key={name} id={`g-${encodeURIComponent(name)}`} className="scroll-mt-36">
-            <h2 className="sticky top-[8.5rem] z-[5] bg-muted/90 px-4 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur">
+          <section key={name} id={`g-${encodeURIComponent(name)}`} className="scroll-mt-60">
+            <h2 className="bg-muted/90 px-4 py-1.5 text-xs font-semibold text-muted-foreground">
               {name}・{list.length}
             </h2>
             <ul className="divide-y">
               {list.map((c) => (
                 <li key={`${name}-${c.id}`}>
                   <a href={c.editUrl} className="flex items-center gap-3 px-4 py-3 active:bg-muted">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-sm font-medium text-[var(--brand-ink)]">
                       {initials(c.name)}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -132,7 +144,17 @@ export function ContactDirectory() {
                       <span className="block truncate text-xs text-muted-foreground">
                         {[c.title, c.company].filter(Boolean).join(" · ") || "尚無公司資訊"}
                       </span>
+                      {c.lastTouch ? (
+                        <span className="mt-0.5 block truncate text-xs text-[var(--brand-ink)]">
+                          💬 {shortDate(c.lastTouch.occurred_on)} {c.lastTouch.content}
+                        </span>
+                      ) : null}
                     </span>
+                    {groupBy === "important" ? (
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {c.lastContactOn ? `${daysSince(c.lastContactOn)} 天` : "未聯絡"}
+                      </span>
+                    ) : null}
                     {c.missing > 0 ? (
                       <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                         缺 {c.missing}

@@ -5,11 +5,12 @@ import { importLineChatFile } from "@/lib/chat-import/import-core";
 import type { ChatSource } from "@/lib/chat-import/parse";
 import { MAX_IMPORT_FILE_BYTES, type ParticipantMapping } from "@/lib/chat-import/schema";
 import { type LineMessage, getProfileDisplayName } from "@/lib/line/api";
-import { type ContactForCard, MAIN_QUICK, postback, text, uri } from "@/lib/line/flex";
+import { type ContactForCard, MAIN_QUICK, carousel, postback, text, uri } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
 import { contactFormUrl } from "@/lib/mini/links";
 import { isLinkSigningConfigured } from "@/lib/mini/token";
 
+import { MILESTONE_BUDGET_MS, milestoneMessages } from "./chat-milestones";
 import { type BotCtx, CONTACT_CARD_COLUMNS, createContact, updateContact } from "./data";
 import { extractContactFields, normalizePhone, parseLineDisplayName } from "./extract";
 
@@ -194,13 +195,26 @@ function archiveSummary(zipName: string, outcomes: ImportOutcome[], skipped: num
   ].filter(Boolean);
   const filled = ok.flatMap((o) => o.filled);
   if (filled.length > 0) lines.push(`✏️ 從聊天內容補上：\n${filled.slice(0, 10).join("\n")}`);
-  return [text(lines.join("\n").slice(0, 4900), [...fillQuick(ok), uri("網頁看聊天紀錄", webUrl("/records"))!])];
+  // Too many chats to analyse in one go — one tap each instead.
+  const nodeButtons = ok
+    .filter((o) => o.importId)
+    .slice(0, 6)
+    .map((o) => postback(`🧭 ${o.chatName ?? o.fileName}`.slice(0, 20), { a: "nodes", i: o.importId! }, `整理「${o.chatName ?? o.fileName}」的溝通節點`));
+  if (nodeButtons.length > 0) lines.push("\n按下面的 🧭 讓 AI 整理每段對話的溝通節點。");
+  return [text(lines.join("\n").slice(0, 4900), [...nodeButtons, ...fillQuick(ok), uri("網頁看聊天紀錄", webUrl("/records"))!])];
 }
 
 export async function importChatFile(ctx: BotCtx, fileName: string, buffer: ArrayBuffer): Promise<LineMessage[]> {
   if (buffer.byteLength > MAX_IMPORT_FILE_BYTES) return [text("檔案太大了（上限 15MB）。")];
   const shared = await loadShared(ctx);
-  return singleSummary(await importOne(ctx, shared, fileName, buffer));
+  const outcome = await importOne(ctx, shared, fileName, buffer);
+  const summary = singleSummary(outcome);
+  if (!outcome.ok || !outcome.importId) return summary;
+  // The 溝通節點 come back in the same reply when the free model answers in
+  // time; otherwise a button lets you run it again later.
+  const nodes = await milestoneMessages(ctx, outcome.importId, { deadline: Date.now() + MILESTONE_BUDGET_MS });
+  if (nodes.ok) return [...summary, carousel("溝通節點", [nodes.bubble])];
+  return [...summary, text(nodes.note, [nodes.retry])];
 }
 
 export async function importChatArchive(ctx: BotCtx, zipName: string, buffer: ArrayBuffer): Promise<LineMessage[]> {

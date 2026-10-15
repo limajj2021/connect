@@ -29,4 +29,17 @@ describe("groupContacts", () => {
   it("groups by role in a fixed order", () => {
     expect(groupContacts(list, "role").map(([name]) => name)).toEqual(["老闆", "非老闆", "未分類"]);
   });
+
+  it("lists important contacts only, longest without contact first", () => {
+    const base = { company: null, title: null, role_type: "boss", tags: [], missing: 0, editUrl: "" };
+    const list: DirectoryContact[] = [
+      { ...base, id: "1", name: "甲", is_important: true, lastContactOn: "2026-10-01" },
+      { ...base, id: "2", name: "乙", is_important: false, lastContactOn: null },
+      { ...base, id: "3", name: "丙", is_important: true, lastContactOn: null },
+      { ...base, id: "4", name: "丁", is_important: true, lastContactOn: "2026-08-01" },
+    ];
+    const groups = groupContacts(list, "important");
+    expect(groups).toHaveLength(1);
+    expect(groups[0][1].map((c) => c.name)).toEqual(["丙", "丁", "甲"]);
+  });
 });

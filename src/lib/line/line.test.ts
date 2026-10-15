@@ -42,6 +42,8 @@ const contact = {
   line_id: null,
   whatsapp_phone: "0912345678",
   wechat_id: null,
+  linkedin_url: null,
+  facebook_url: null,
   birthday_month: null,
   birthday_day: null,
   notes: null,

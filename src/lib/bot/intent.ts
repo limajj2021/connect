@@ -15,6 +15,8 @@ export type Intent =
   | { kind: "note"; name: string; text: string }
   | { kind: "interaction"; name: string; text: string }
   | { kind: "history"; name: string }
+  | { kind: "post"; name?: string; text?: string }
+  | { kind: "keep_in_touch" }
   | { kind: "generate_reminders" }
   | { kind: "web" }
   | { kind: "collect_start" }
@@ -37,6 +39,10 @@ const RULES: [RegExp, (m: RegExpMatchArray) => Intent][] = [
   // A quick log of one touch ("還聊了什麼") — distinct from a formal 會議.
   [/^(?:交流|聊過|聊了|聯絡過|互動|記錄|紀錄)\s+(\S+)\s+([\s\S]+)$/, (m) => ({ kind: "interaction", name: m[1], text: m[2].trim() })],
   [/^(?:上次聊|上次交流|聊過什麼|歷史|互動紀錄|互動歷史)\s+(\S+)$/, (m) => ({ kind: "history", name: m[1] })],
+  // Something they posted (LinkedIn / Facebook) — archived on their timeline as 動態.
+  [/^(?:動態|貼文|記動態)$/, () => ({ kind: "post" })],
+  [/^(?:動態|貼文|記動態)\s+(\S+)(?:\s+([\s\S]+))?$/, (m) => ({ kind: "post", name: m[1], text: m[2]?.trim() })],
+  [/^(?:久沒聯絡|好久沒聯絡|該聯絡誰|要聯絡誰)$/, () => ({ kind: "keep_in_touch" })],
   [/^(?:產生提醒|生成提醒|更新提醒)$/, () => ({ kind: "generate_reminders" })],
   [/^(?:網頁|後台|網頁版|匯出|匯入|設定|web)$/i, () => ({ kind: "web" })],
   [/^(?:轉傳|轉傳紀錄|轉傳訊息|存對話|收集)$/, () => ({ kind: "collect_start" })],

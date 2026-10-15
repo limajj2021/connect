@@ -30,6 +30,8 @@ const MINI_FIELDS = [
   "line_id",
   "whatsapp_phone",
   "wechat_id",
+  "linkedin_url",
+  "facebook_url",
   "birthday_month",
   "birthday_day",
   "birthday_year",
@@ -173,7 +175,7 @@ export async function confirmSend(
   const ctx = { supabase, ownerId };
   try {
     if (opts.reminderId) await setReminderStatus(ctx, [opts.reminderId], "completed");
-    await createInteraction(ctx, contactId, `已透過 ${opts.channelLabel} 傳送${opts.occasionLabel}`, taipeiToday());
+    await createInteraction(ctx, contactId, `已透過 ${opts.channelLabel} 傳送${opts.occasionLabel}`, taipeiToday(), { kind: "sent" });
     refreshWeb(contactId);
     return { ok: true };
   } catch (error) {

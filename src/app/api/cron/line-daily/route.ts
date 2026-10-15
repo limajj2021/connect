@@ -12,7 +12,8 @@ export const maxDuration = 60;
 
 /**
  * Daily 09:00 (Asia/Taipei) push: birthdays coming up, festival greetings
- * due, other reminders, and today's tasks. Each reminder is pushed once per
+ * due, ★ people you haven't talked to in a while, other reminders, and
+ * today's tasks. Each reminder is pushed once per
  * stage (a few days early for birthdays, then on the day) — tracked in
  * notification_deliveries — and nothing is sent on a quiet day.
  */
@@ -41,12 +42,13 @@ export async function GET(request: Request) {
     .select("dedupe_key")
     .eq("owner_id", ownerId)
     .eq("channel", "line")
-    .like("dedupe_key", "line:reminder:%");
+    .like("dedupe_key", "line:%");
   if (error) throw error;
   const skip = new Set((delivered ?? []).map((d) => d.dedupe_key as string));
 
-  const digest = await buildDigest(ctx, { skipReminderIds: skip });
-  if (!digest.hasContent || (digest.reminderKeys.length === 0 && !(await hasTasksDueToday(ctx)))) {
+  // At most two "好久沒聯絡" nudges a day in the push — the 今日 command shows a few more.
+  const digest = await buildDigest(ctx, { skipKeys: skip, keepInTouchLimit: 2 });
+  if (!digest.hasContent || (digest.deliveryKeys.length === 0 && !(await hasTasksDueToday(ctx)))) {
     return NextResponse.json({ pushed: false });
   }
 
@@ -57,11 +59,11 @@ export async function GET(request: Request) {
     pushError = e instanceof Error ? e.message : String(e);
   }
 
-  if (digest.reminderKeys.length > 0) {
+  if (digest.deliveryKeys.length > 0) {
     const { error: insertError } = await supabase.from("notification_deliveries").insert(
-      digest.reminderKeys.map(({ id, key }) => ({
+      digest.deliveryKeys.map(({ reminderId, key }) => ({
         owner_id: ownerId,
-        reminder_id: id,
+        reminder_id: reminderId,
         channel: "line",
         status: pushError ? "failed" : "sent",
         sent_at: pushError ? null : new Date().toISOString(),
@@ -73,7 +75,7 @@ export async function GET(request: Request) {
   }
 
   if (pushError) return NextResponse.json({ pushed: false, error: pushError }, { status: 502 });
-  return NextResponse.json({ pushed: true, reminders: digest.reminderKeys.length });
+  return NextResponse.json({ pushed: true, items: digest.deliveryKeys.length });
 }
 
 /** Only tasks due exactly today trigger a push on their own; overdue ones ride along. */

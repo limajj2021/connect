@@ -54,6 +54,8 @@ export function ContactView({ contact }: { contact: ContactWithIndustries }) {
         <Field label="LINE ID" value={contact.line_id} />
         <Field label="WhatsApp" value={contact.whatsapp_phone} />
         <Field label="WeChat ID" value={contact.wechat_id} />
+        <Field label="LinkedIn" value={contact.linkedin_url} />
+        <Field label="Facebook" value={contact.facebook_url} />
         <Field label="認識日期" value={contact.met_date} />
         <Field label="認識管道" value={contact.met_channel} />
         <Field label="生日" value={formatBirthday(contact)} />

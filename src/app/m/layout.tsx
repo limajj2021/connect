@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function MiniLayout({ children }: LayoutProps<"/m">) {
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-lg bg-background">
+    <div className="mini-theme mx-auto min-h-dvh w-full max-w-lg bg-background">
       <LiffBoot />
       {children}
     </div>

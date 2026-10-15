@@ -17,6 +17,8 @@ export function buildContactPayload(values: ContactFormValues) {
     line_url: values.line_url ?? null,
     whatsapp_phone: values.whatsapp_phone ?? null,
     wechat_id: values.wechat_id ?? null,
+    linkedin_url: values.linkedin_url ?? null,
+    facebook_url: values.facebook_url ?? null,
     met_date: values.met_date ?? null,
     met_channel: values.met_channel ?? null,
     birthday_month: values.birthday_month ?? null,
@@ -26,6 +28,12 @@ export function buildContactPayload(values: ContactFormValues) {
     is_important: values.is_important,
     festival_reminder_enabled: values.festival_reminder_enabled,
   };
+}
+
+/** "linkedin.com/in/xxx" pasted without https:// is still a link. */
+function withScheme(value: FormDataEntryValue) {
+  const text = String(value).trim();
+  return text && !/^https?:\/\//i.test(text) && /\./.test(text) ? `https://${text}` : text;
 }
 
 export function parseContactFormData(formData: FormData) {
@@ -48,6 +56,8 @@ export function parseContactFormData(formData: FormData) {
     line_url: field("line_url"),
     whatsapp_phone: field("whatsapp_phone"),
     wechat_id: field("wechat_id"),
+    linkedin_url: withScheme(field("linkedin_url")),
+    facebook_url: withScheme(field("facebook_url")),
     met_date: field("met_date"),
     met_channel: field("met_channel"),
     birthday_month: field("birthday_month"),

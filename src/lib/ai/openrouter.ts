@@ -34,7 +34,23 @@ export function isAiConfigured() {
 
 export type AiResult = { ok: true; text: string } | { ok: false; error: string };
 
-async function tryModel(apiKey: string, model: string, prompt: string, maxTokens: number): Promise<AiResult> {
+interface CompleteOpts {
+  maxTokens?: number;
+  /** Extra system instruction appended to the Traditional-Chinese-only rule. */
+  system?: string;
+  temperature?: number;
+  timeoutMs?: number;
+  /** Accept/reject a model's reply (default: a one-line greeting). A rejection tries the next model. */
+  validate?: (text: string) => string | null;
+  /** Stop trying further models once this wall-clock time (ms epoch) has passed. */
+  deadline?: number;
+  /** Skip the whole-reply Simplified check (the caller filters field by field instead). */
+  allowSimplified?: boolean;
+}
+
+const greetingCheck = (text: string) => (looksLikeAGreeting(text) ? null : "回了說明而不是訊息本文");
+
+async function tryModel(apiKey: string, model: string, prompt: string, opts: CompleteOpts): Promise<AiResult> {
   try {
     const res = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -49,13 +65,13 @@ async function tryModel(apiKey: string, model: string, prompt: string, maxTokens
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: opts.system ? `${SYSTEM_PROMPT}\n${opts.system}` : SYSTEM_PROMPT },
           { role: "user", content: prompt },
         ],
-        max_tokens: maxTokens,
-        temperature: 0.8,
+        max_tokens: opts.maxTokens ?? 200,
+        temperature: opts.temperature ?? 0.8,
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -64,8 +80,9 @@ async function tryModel(apiKey: string, model: string, prompt: string, maxTokens
     const json = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
     const content = json.choices?.[0]?.message?.content?.trim();
     if (!content) return { ok: false, error: `${model} 沒有回覆內容` };
-    if (SIMPLIFIED_TELLS.test(content)) return { ok: false, error: `${model} 用了簡體字` };
-    if (!looksLikeAGreeting(content)) return { ok: false, error: `${model} 回了說明而不是訊息本文` };
+    if (!opts.allowSimplified && SIMPLIFIED_TELLS.test(content)) return { ok: false, error: `${model} 用了簡體字` };
+    const rejected = (opts.validate ?? greetingCheck)(content);
+    if (rejected) return { ok: false, error: `${model} ${rejected}` };
     return { ok: true, text: content };
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.name === "TimeoutError" ? `${model} 逾時` : `${model} 連線失敗` };
@@ -73,15 +90,37 @@ async function tryModel(apiKey: string, model: string, prompt: string, maxTokens
 }
 
 /** Tries each configured free model in turn. Never throws — callers always have a template to fall back to. */
-export async function aiComplete(prompt: string, opts: { maxTokens?: number } = {}): Promise<AiResult> {
+export async function aiComplete(prompt: string, opts: CompleteOpts = {}): Promise<AiResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return { ok: false, error: "尚未設定 OPENROUTER_API_KEY" };
 
   const errors: string[] = [];
   for (const model of MODELS) {
-    const result = await tryModel(apiKey, model, prompt, opts.maxTokens ?? 200);
+    if (opts.deadline && Date.now() > opts.deadline) {
+      errors.push("時間不夠了");
+      break;
+    }
+    const timeoutMs = opts.deadline ? Math.max(3_000, Math.min(opts.timeoutMs ?? 20_000, opts.deadline - Date.now())) : opts.timeoutMs;
+    const result = await tryModel(apiKey, model, prompt, { ...opts, timeoutMs });
     if (result.ok) return result;
     errors.push(result.error);
   }
   return { ok: false, error: errors.join("；") };
+}
+
+/** True when the text slips into Simplified Chinese (see SIMPLIFIED_TELLS). */
+export function hasSimplifiedChinese(text: string) {
+  return SIMPLIFIED_TELLS.test(text);
+}
+
+/** The first top-level `{...}` in a model reply (models like to wrap JSON in prose or ``` fences). */
+export function extractJsonObject(text: string): unknown {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
 }

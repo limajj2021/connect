@@ -1,6 +1,6 @@
 import type { ContactDraft } from "@/lib/bot/extract";
 import { GREETING_LABELS, type GreetingKind } from "@/lib/bot/templates";
-import { sendMessageUrl } from "@/lib/mini/links";
+import { contactListUrl, sendMessageUrl } from "@/lib/mini/links";
 import { isLinkSigningConfigured } from "@/lib/mini/token";
 import type { ContactRow, TaskRow } from "@/types/database";
 
@@ -79,44 +79,134 @@ function row(label: string, value: string) {
   };
 }
 
-function button(action: Action | null, style: "primary" | "secondary" | "link" = "secondary") {
-  if (!action) return null;
-  return { type: "button", style, height: "sm", action };
+// ---------------------------------------------------------------------------
+// Look & feel — every card shares one structure: a brand-colored header band
+// with a bold title, a white body, and a light-grey footer of rounded "pill"
+// buttons (primary filled, the rest outlined, two per row), optionally ending
+// in a row of navigation pills (今日／人脈／提醒) so you never have to go
+// back to the menu. Change the palette here and every card follows.
+// ---------------------------------------------------------------------------
+
+export const THEME = {
+  brand: "#F7C948",
+  brandInk: "#3B2F00",
+  brandSub: "#6E5A12",
+  ink: "#222222",
+  muted: "#8C8C8C",
+  footer: "#F2F2F2",
+  outline: "#8B7B55",
+  link: "#2F6F9F",
+} as const;
+
+type ButtonStyle = "primary" | "secondary" | "link";
+
+/** A rounded pill (a tappable box, so it can be outlined — native buttons can't). */
+export function pill(action: Action, style: ButtonStyle = "secondary", flex = 1): Record<string, unknown> {
+  const primary = style === "primary";
+  return {
+    type: "box",
+    layout: "vertical",
+    flex,
+    action,
+    cornerRadius: "20px",
+    paddingAll: "8px",
+    justifyContent: "center",
+    backgroundColor: primary ? THEME.brand : style === "secondary" ? "#FFFFFF" : THEME.footer,
+    ...(style === "secondary" ? { borderWidth: "1px", borderColor: THEME.outline } : {}),
+    contents: [
+      t(action.label, {
+        size: "sm",
+        align: "center",
+        weight: primary ? "bold" : "regular",
+        color: style === "link" ? THEME.link : primary ? THEME.brandInk : THEME.ink,
+      }),
+    ],
+  };
 }
 
-function bubble(opts: {
+type Pill = { action: Action; style: ButtonStyle };
+
+function button(action: Action | null, style: ButtonStyle = "secondary"): Pill | null {
+  return action ? { action, style } : null;
+}
+
+/** Primary pills get a row to themselves; the others pair up two per row. */
+function pillRows(pills: Pill[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  let pending: Pill[] = [];
+  const flush = () => {
+    if (pending.length === 0) return;
+    rows.push({ type: "box", layout: "horizontal", spacing: "sm", contents: pending.map((p) => pill(p.action, p.style)) });
+    pending = [];
+  };
+  for (const p of pills) {
+    if (p.style === "primary") {
+      flush();
+      rows.push(pill(p.action, "primary"));
+    } else {
+      pending.push(p);
+      if (pending.length === 2) flush();
+    }
+  }
+  flush();
+  return rows;
+}
+
+/** 今日／人脈／提醒 — the three places you go most, on hub cards. */
+export function navActions(): Action[] {
+  const list = contactListUrl();
+  return [
+    postback("今日", { a: "cmd", c: "today" }, "今日"),
+    (list ? uri("人脈", list) : null) ?? postback("人脈", { a: "cmd", c: "search" }, "找人"),
+    postback("提醒", { a: "cmd", c: "reminders" }, "提醒"),
+  ];
+}
+
+function navRow(hint?: string): Record<string, unknown>[] {
+  return [
+    { type: "box", layout: "horizontal", spacing: "sm", margin: "md", contents: navActions().map((a) => pill(a, "secondary")) },
+    ...(hint ? [t(hint, { size: "xxs", color: THEME.muted, align: "center", margin: "sm" })] : []),
+  ];
+}
+
+export function cardBubble(opts: {
   title: string;
   subtitle?: string;
   body?: Record<string, unknown>[];
-  buttons?: (Record<string, unknown> | null)[];
-  accent?: string;
+  buttons?: (Pill | null)[];
+  /** Append the 今日／人脈／提醒 navigation row (with an optional grey hint under it). */
+  nav?: boolean | string;
+  size?: "kilo" | "mega";
 }) {
-  const buttons = (opts.buttons ?? []).filter(Boolean);
+  const buttons = (opts.buttons ?? []).filter((b): b is Pill => Boolean(b));
+  const footer = [...pillRows(buttons), ...(opts.nav ? navRow(typeof opts.nav === "string" ? opts.nav : undefined) : [])];
   return {
     type: "bubble",
-    size: "kilo",
+    size: opts.size ?? "kilo",
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: opts.accent ?? "#111111",
+      backgroundColor: THEME.brand,
       paddingAll: "14px",
       contents: [
-        t(opts.title, { weight: "bold", size: "md", color: "#ffffff" }),
-        ...(opts.subtitle ? [t(opts.subtitle, { size: "xs", color: "#dddddd" })] : []),
+        t(opts.title, { weight: "bold", size: "md", color: THEME.brandInk, align: "center" }),
+        ...(opts.subtitle ? [t(opts.subtitle, { size: "xs", color: THEME.brandSub, align: "center" })] : []),
       ],
     },
     ...(opts.body && opts.body.length > 0
       ? { body: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "14px", contents: opts.body } }
       : {}),
-    ...(buttons.length > 0
-      ? { footer: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "10px", contents: buttons } }
+    ...(footer.length > 0
+      ? { footer: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "12px", backgroundColor: THEME.footer, contents: footer } }
       : {}),
   };
 }
 
+const bubble = cardBubble;
+
 /** A small card with a headline and a few action buttons. */
 export function noticeCard(altText: string, title: string, subtitle: string | undefined, actions: Action[]): LineMessage {
-  return flex(altText, bubble({ title, subtitle, accent: "#2f5d50", buttons: actions.map((a, i) => button(a, i === 0 ? "secondary" : "link")) }));
+  return flex(altText, bubble({ title, subtitle, buttons: actions.map((a, i) => button(a, i === 0 ? "primary" : "secondary")) }));
 }
 
 /** A headline, a list of short lines (muted ones greyed out) and buttons. */
@@ -140,11 +230,15 @@ export function listCard(opts: {
     bubble({
       title: opts.title,
       subtitle: opts.subtitle,
-      accent: "#2f5d50",
       body,
-      buttons: actions.map((a, i) => button(a, i === 0 ? "primary" : i === 1 ? "secondary" : "link")),
+      buttons: actions.map((a, i) => button(a, i === 0 ? "primary" : "secondary")),
+      nav: true,
     }),
   );
+}
+
+export function flexMessage(altText: string, contents: Record<string, unknown>, quick?: Action[]): LineMessage {
+  return flex(altText, contents, quick);
 }
 
 export function carousel(altText: string, bubbles: Record<string, unknown>[], quick?: Action[]): LineMessage {
@@ -171,6 +265,8 @@ export type ContactForCard = Pick<
   | "line_id"
   | "whatsapp_phone"
   | "wechat_id"
+  | "linkedin_url"
+  | "facebook_url"
   | "birthday_month"
   | "birthday_day"
   | "notes"
@@ -229,7 +325,7 @@ function touchLine(touch: LastTouch): string {
   return `${Number(month)}/${Number(day)}：${touch.content.replace(/[\r\n]+/g, " ").slice(0, 60)}`;
 }
 
-export function contactBubble(contact: ContactForCard, links?: ContactLinks, lastTouch?: LastTouch) {
+export function contactBubble(contact: ContactForCard, links?: ContactLinks, lastTouch?: LastTouch, latestPost?: LastTouch) {
   const lines: [string, string | null][] = [
     ["公司", contact.company],
     ["職稱", contact.title],
@@ -242,25 +338,41 @@ export function contactBubble(contact: ContactForCard, links?: ContactLinks, las
     ["生日", contact.birthday_month && contact.birthday_day ? `${contact.birthday_month}/${contact.birthday_day}` : null],
     ["備註", contact.notes ? contact.notes.slice(0, 80) : null],
   ];
-  const body = lines.filter(([, v]) => v).map(([k, v]) => row(k, v!));
-  if (lastTouch) body.unshift(t(`💬 上次聊到（${touchLine(lastTouch)}）`, { size: "xs", color: "#2f5d50", wrap: true }) as never);
+  const body: Record<string, unknown>[] = [];
+  // What to pick the conversation up from comes first — it's why you opened the card.
+  if (lastTouch) body.push(highlight(`💬 上次聊到（${touchLine(lastTouch)}）`));
+  if (latestPost) body.push(highlight(`📣 他的動態（${touchLine(latestPost)}）`));
+  body.push(...lines.filter(([, v]) => v).map(([k, v]) => row(k, v!)));
   const missing = missingFields(contact);
   if (missing.length > 0) {
-    body.push(t(`還缺：${missing.map((f) => FIELD_LABELS[f]).join("、")}`, { size: "xs", color: "#b26a00" }) as never);
+    body.push(t(`還缺：${missing.map((f) => FIELD_LABELS[f]).join("、")}`, { size: "xs", color: "#b26a00" }));
   }
   return bubble({
     title: `${contact.is_important ? "★ " : ""}${contact.name}`,
     subtitle: [contact.title, contact.company].filter(Boolean).join(" · ") || undefined,
-    body: body.length > 0 ? body : [t("目前只有名字，按「✏️ 編輯資料」一次填完。", { size: "sm", color: "#8c8c8c" })],
+    body: body.length > 0 ? body : [t("目前只有名字，按「📇 詳細／編輯」一次填完。", { size: "sm", color: THEME.muted })],
     buttons: [
       button(postback("💬 傳訊息", { a: "msg", id: contact.id, k: "hello" }), "primary"),
       button(
-        (links ? uri(missing.length > 0 ? "✏️ 補齊資料" : "✏️ 編輯資料", links.edit) : null) ??
+        (links ? uri(missing.length > 0 ? "📇 補資料" : "📇 詳細", links.edit) : null) ??
           postback("✏️ 編輯資料", { a: "fill", id: contact.id }),
       ),
       button((links ? uri("📝 加待辦", links.task) : null) ?? postback("📝 加待辦", { a: "task", id: contact.id })),
+      button(contact.linkedin_url ? uri("🔗 LinkedIn", contact.linkedin_url) : null),
+      button(contact.facebook_url ? uri("🔗 Facebook", contact.facebook_url) : null),
     ],
   });
+}
+
+function highlight(value: string) {
+  return {
+    type: "box",
+    layout: "vertical",
+    backgroundColor: "#FFF6D6",
+    cornerRadius: "8px",
+    paddingAll: "8px",
+    contents: [t(value, { size: "xs", color: THEME.brandInk })],
+  };
 }
 
 export function contactCards(
@@ -268,13 +380,14 @@ export function contactCards(
   intro?: string,
   linksFor?: (contact: ContactForCard) => ContactLinks | undefined,
   lastTouches?: Map<string, LastTouch>,
+  latestPosts?: Map<string, LastTouch>,
 ): LineMessage[] {
   const messages: LineMessage[] = [];
   if (intro) messages.push(text(intro));
   messages.push(
     carousel(
       contacts.map((c) => c.name).join("、"),
-      contacts.slice(0, 10).map((c) => contactBubble(c, linksFor?.(c), lastTouches?.get(c.id))),
+      contacts.slice(0, 10).map((c) => contactBubble(c, linksFor?.(c), lastTouches?.get(c.id), latestPosts?.get(c.id))),
     ),
   );
   return messages;
@@ -325,7 +438,8 @@ export function sendMessageBubble(opts: {
   occasionName?: string;
   variant: number;
   reminderId?: string;
-  accent?: string;
+  /** Extra secondary actions appended at the end (e.g. the festival broadcast's "全部已傳"). */
+  extraActions?: Action[];
   /** Shows "🤖 AI 客製化" (needs a contact to personalise against, and OPENROUTER_API_KEY set). */
   aiAvailable?: boolean;
 }) {
@@ -343,12 +457,12 @@ export function sendMessageBubble(opts: {
   const whatsappHref = waPhone ? (send("whatsapp") ?? whatsappUrl(waPhone, messageText)) : null;
   const buttons = [
     button(uri(contact ? "LINE 傳送（選他）" : "LINE 群發（可多選）", send("line") ?? lineShareUrl(messageText)), "primary"),
-    button(whatsappHref ? uri("WhatsApp 直接開聊天", whatsappHref) : null),
-    button(contact?.line_id ? uri("開他的 LINE 個人頁", lineProfileUrl(contact.line_id)) : null),
+    button(whatsappHref ? uri("WhatsApp", whatsappHref) : null),
+    button(contact?.line_id ? uri("LINE 個人頁", lineProfileUrl(contact.line_id)) : null),
     button(
       contact?.wechat_id || !contact
-        ? (wechatUrl ? uri("WeChat：給我純文字複製", wechatUrl) : null) ??
-            postback("WeChat：給我純文字複製", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant })
+        ? (wechatUrl ? uri("WeChat 複製文字", wechatUrl) : null) ??
+            postback("WeChat 複製文字", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant })
         : null,
     ),
     button(
@@ -360,11 +474,11 @@ export function sendMessageBubble(opts: {
     // When sends are tracked, the send flow itself has its own "我傳了" / auto
     // confirm (and also logs the interaction) — this plain button would skip that.
     button(opts.reminderId && !trackSend ? postback("✅ 已傳，完成", { a: "rem_done", id: opts.reminderId }, "已傳") : null),
+    ...(opts.extraActions ?? []).map((a) => button(a)),
   ];
   return bubble({
     title: opts.title,
     subtitle: opts.subtitle,
-    accent: opts.accent,
     body: [t(messageText, { size: "sm" })],
     buttons,
   });
@@ -389,11 +503,12 @@ export type TaskForList = Pick<TaskRow, "id" | "title" | "due_date"> & { contact
 export function taskListBubble(tasks: TaskForList[], title: string, today: string) {
   return bubble({
     title,
-    accent: "#2f5d50",
+    nav: true,
     body: tasks.slice(0, 10).map((task) => ({
       type: "box",
       layout: "horizontal",
       spacing: "sm",
+      alignItems: "center",
       contents: [
         {
           type: "box",
@@ -409,13 +524,7 @@ export function taskListBubble(tasks: TaskForList[], title: string, today: strin
             ),
           ],
         },
-        {
-          type: "button",
-          flex: 2,
-          height: "sm",
-          style: "link",
-          action: postback("完成", { a: "task_done", id: task.id }, `完成：${task.title.slice(0, 30)}`),
-        },
+        pill(postback("完成", { a: "task_done", id: task.id }, `完成：${task.title.slice(0, 30)}`), "secondary", 2),
       ],
     })),
   });
@@ -424,7 +533,7 @@ export function taskListBubble(tasks: TaskForList[], title: string, today: strin
 export const MAIN_QUICK: Action[] = [
   postback("今日", { a: "cmd", c: "today" }, "今日"),
   postback("找人", { a: "cmd", c: "search" }, "找人"),
-  postback("提醒", { a: "cmd", c: "reminders" }, "提醒"),
+  postback("久沒聯絡", { a: "cmd", c: "keep" }, "久沒聯絡"),
   postback("轉傳紀錄", { a: "cmd", c: "collect" }, "轉傳紀錄"),
 ];
 
@@ -434,23 +543,19 @@ export function helpMessages(): LineMessage[] {
       [
         "我是你的人脈小幫手，直接打字就好：",
         "",
-        "👤 新增 王小明 台積電 經理 0912345678 生日3/4",
         "🔍 找 王小明（或直接打名字）",
-        "📝 待辦 寄報價給王小明 明天",
-        "🤝 會議 王小明 今天談合作，下週回覆報價",
+        "💬 交流 王小明 聊到他兒子要考學測（卡片會提醒你上次聊到哪）",
+        "📣 動態 王小明 升任副總（他在 LinkedIn／FB 發的近況）",
+        "👋 久沒聯絡（★ 重要人脈太久沒聊的）",
+        "📜 歷史 王小明（看完整溝通節點）",
         "🗒 備註 王小明 喜歡喝咖啡（長期不變的事）",
-        "💬 交流 王小明 聊到他兒子要考學測（每次聊了什麼，卡片會提醒你上次聊到哪）",
-        "📜 歷史 王小明（看完整交流紀錄）",
-        "🎂 生日／提醒／今日",
+        "📝 待辦 寄報價給王小明 明天",
         "",
-        "💬 到好友聊天室長按訊息 →「轉傳」給我（可多選）→ 選是誰 → 存成他的聊天紀錄並補上電話、Email",
-        "📷 傳名片、好友個人頁或好友名片的截圖 → 直接建檔",
-        "📷 傳「聊天」或「好友」列表截圖（可一次多張）→ 批量建檔",
-        "（LINE 的「分享好友」機器人收不到，請改用轉傳或截圖）",
-        "📄 傳 LINE／WhatsApp 匯出的聊天 .txt 或 .zip → 匯入聊天紀錄",
-        "",
-        "人脈卡上的「✏️ 編輯資料」會開一頁式表單，所有欄位一次填完。",
-        "選單「節日」可以自己加節日（不限三節）；傳訊息卡上有「🤖 AI 客製化」可以用。",
+        "💬 到好友聊天室長按訊息 →「轉傳」給我 → 選是誰 → AI 整理成溝通節點",
+        "📄 傳 LINE／WhatsApp 匯出的聊天 .txt 或 .zip → 一樣會整理溝通節點",
+        "🔗 貼 LinkedIn／Facebook 個人頁連結 → 存到他的卡片",
+        "📣 貼他的貼文連結（或打「動態」再傳截圖）→ 存成他的動態",
+        "📷 傳名片、好友個人頁截圖 → 建檔；好友列表截圖 → 批量建檔",
       ].join("\n"),
       MAIN_QUICK,
     ),

@@ -134,3 +134,16 @@
     overflow-x: clip;
   }
 }
+/*
+ * LIFF pages (/m) share the LINE cards' look: warm brand yellow for primary
+ * actions with dark ink on top, rounder corners. Scoped so the web app keeps
+ * its own neutral theme.
+ */
+.mini-theme {
+  --primary: #f7c948;
+  --primary-foreground: #3b2f00;
+  --ring: #e0ad1f;
+  --radius: 0.875rem;
+  --brand-soft: #fff6d6;
+  --brand-ink: #3b2f00;
+}

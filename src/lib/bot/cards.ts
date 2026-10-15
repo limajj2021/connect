@@ -12,13 +12,14 @@ export function linksFor(contact: Pick<ContactForCard, "id">): ContactLinks | un
   return { edit: contactFormUrl(contact.id), task: newTaskFormUrl(contact.id) };
 }
 
-/** Contact card with "上次聊到" when there's a logged interaction. */
+/** Contact card with "上次聊到" / "他的動態" when there are logged ones. */
 export async function card(ctx: BotCtx, contact: ContactForCard) {
-  const touch = await lastTouchesFor(ctx, [contact.id]);
-  return contactBubble(contact, linksFor(contact), touch.get(contact.id));
+  const [touch, post] = await Promise.all([lastTouchesFor(ctx, [contact.id], "chat"), lastTouchesFor(ctx, [contact.id], "post")]);
+  return contactBubble(contact, linksFor(contact), touch.get(contact.id), post.get(contact.id));
 }
 
 export async function cards(ctx: BotCtx, contacts: ContactForCard[], intro?: string) {
-  const touches = await lastTouchesFor(ctx, contacts.map((c) => c.id));
-  return contactCards(contacts, intro, linksFor, touches);
+  const ids = contacts.map((c) => c.id);
+  const [touches, posts] = await Promise.all([lastTouchesFor(ctx, ids, "chat"), lastTouchesFor(ctx, ids, "post")]);
+  return contactCards(contacts, intro, linksFor, touches, posts);
 }

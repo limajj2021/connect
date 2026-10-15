@@ -29,6 +29,8 @@ export interface ContactRow {
   line_url: string | null;
   whatsapp_phone: string | null;
   wechat_id: string | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
   met_date: string | null;
   met_channel: string | null;
   birthday_month: number | null;
@@ -47,8 +49,13 @@ export interface ContactInteractionRow {
   contact_id: string;
   occurred_on: string;
   content: string;
+  kind: InteractionKind;
+  source_url: string | null;
+  chat_import_id: string | null;
   created_at: string;
 }
+
+export type InteractionKind = "chat" | "post" | "sent";
 
 export interface IndustryRow {
   id: string;
