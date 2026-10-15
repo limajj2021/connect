@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function RemindersFilterBar() {
+export function RemindersFilterBar({ occasionNames }: { occasionNames: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -29,6 +29,14 @@ export function RemindersFilterBar() {
     }
     startTransition(() => router.push(`${pathname}?${params.toString()}`));
   }
+
+  const typeItems: Record<string, string> = {
+    all: "全部類型",
+    ...Object.fromEntries(occasionNames.map((name) => [name, name])),
+    birthday: "生日",
+    custom: "自訂",
+    meeting_followup: "會議後續",
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -48,30 +56,16 @@ export function RemindersFilterBar() {
         </SelectContent>
       </Select>
 
-      <Select
-        items={{
-          all: "全部類型",
-          chinese_new_year: "春節",
-          dragon_boat: "端午節",
-          mid_autumn: "中秋節",
-          birthday: "生日",
-          custom: "自訂",
-          meeting_followup: "會議後續",
-        }}
-        value={type}
-        onValueChange={(v) => updateParam("type", v)}
-      >
+      <Select items={typeItems} value={type} onValueChange={(v) => updateParam("type", v)}>
         <SelectTrigger className="w-36">
           <SelectValue placeholder="類型" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">全部類型</SelectItem>
-          <SelectItem value="chinese_new_year">春節</SelectItem>
-          <SelectItem value="dragon_boat">端午節</SelectItem>
-          <SelectItem value="mid_autumn">中秋節</SelectItem>
-          <SelectItem value="birthday">生日</SelectItem>
-          <SelectItem value="custom">自訂</SelectItem>
-          <SelectItem value="meeting_followup">會議後續</SelectItem>
+          {Object.entries(typeItems).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>

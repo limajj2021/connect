@@ -87,7 +87,9 @@ describe("templates", () => {
     expect(greetingText("birthday", boss)).toContain("王董");
     expect(greetingText("birthday", boss, 1)).not.toBe(greetingText("birthday", boss, 0));
     expect(greetingText("birthday", boss, 2)).toBe(greetingText("birthday", boss, 0));
-    expect(greetingText("chinese_new_year", null)).not.toContain("{稱呼}");
+    expect(greetingText("festival", null, 0, "春節")).not.toContain("{稱呼}");
+    expect(greetingText("festival", null, 0, "春節")).toContain("春節");
+    expect(greetingText("festival", boss, 0, "聖誕節")).toContain("聖誕節");
   });
 });
 

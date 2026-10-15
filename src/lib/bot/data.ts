@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ContactForCard } from "@/lib/line/flex";
-import type { FestivalKey, ReminderType, RoleType, TaskStatus } from "@/types/database";
+import type { ReminderType, RoleType, TaskStatus } from "@/types/database";
 
 import type { ContactDraft } from "./extract";
 
@@ -219,7 +219,8 @@ export type ReminderContact = Pick<
 export interface BotReminder {
   id: string;
   reminder_type: ReminderType;
-  festival_key: FestivalKey | null;
+  festival_key: string | null;
+  festival_date: string | null;
   occurrence_year: number | null;
   due_date: string;
   notes: string | null;
@@ -227,11 +228,11 @@ export interface BotReminder {
 }
 
 const REMINDER_COLUMNS =
-  "id, reminder_type, festival_key, occurrence_year, due_date, notes, contact:contacts(id, name, title, role_type, phone, whatsapp_phone, wechat_id, line_id)";
+  "id, reminder_type, festival_key, festival_date, occurrence_year, due_date, notes, contact:contacts(id, name, title, role_type, phone, whatsapp_phone, wechat_id, line_id)";
 
 export async function listPendingReminders(
   ctx: BotCtx,
-  opts: { dueOnOrBefore: string; festivalKey?: FestivalKey; year?: number; limit?: number },
+  opts: { dueOnOrBefore: string; festivalKey?: string; year?: number; limit?: number },
 ): Promise<BotReminder[]> {
   let query = ctx.supabase
     .from("reminders")

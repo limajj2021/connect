@@ -4,8 +4,6 @@ export type TaskStatus = "pending" | "completed" | "skipped";
 
 export type ReminderType = "festival" | "birthday" | "custom" | "meeting_followup";
 
-export type FestivalKey = "chinese_new_year" | "dragon_boat" | "mid_autumn";
-
 export type ChatType = "individual" | "group";
 
 export type ParseStatus = "pending" | "processing" | "completed" | "failed";
@@ -92,12 +90,28 @@ export interface ReminderRow {
   owner_id: string;
   contact_id: string | null;
   reminder_type: ReminderType;
-  festival_key: FestivalKey | null;
+  // The greeting occasion's name at the time this reminder was generated
+  // (free text — occasions are owner-editable, see greeting_occasions).
+  festival_key: string | null;
+  festival_date: string | null;
   occurrence_year: number | null;
   due_date: string;
   status: TaskStatus;
   completed_at: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GreetingOccasionRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  calendar: "lunar" | "solar";
+  month: number;
+  day: number;
+  lead_days: number;
+  enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -187,6 +201,11 @@ export interface Database {
         Row: ContactInteractionRow;
         Insert: Partial<ContactInteractionRow> & { contact_id: string; occurred_on: string; content: string };
         Update: Partial<ContactInteractionRow>;
+      } & NoRelationships;
+      greeting_occasions: {
+        Row: GreetingOccasionRow;
+        Insert: Partial<GreetingOccasionRow> & { name: string; calendar: "lunar" | "solar"; month: number; day: number };
+        Update: Partial<GreetingOccasionRow>;
       } & NoRelationships;
       meetings: {
         Row: MeetingRow;

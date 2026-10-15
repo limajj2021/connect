@@ -319,22 +319,32 @@ export function sendMessageBubble(opts: {
   messageText: string;
   contact: Pick<ContactForCard, "id" | "phone" | "whatsapp_phone" | "wechat_id" | "line_id"> | null;
   kind: GreetingKind;
+  /** Which occasion, when kind === "festival" (e.g. "聖誕節") — carried through 換一句/AI/複製. */
+  occasionName?: string;
   variant: number;
   reminderId?: string;
   accent?: string;
+  /** Shows "🤖 AI 客製化" (needs a contact to personalise against, and OPENROUTER_API_KEY set). */
+  aiAvailable?: boolean;
 }) {
   const { contact, messageText } = opts;
   const waPhone = contact?.whatsapp_phone ?? null;
+  const occasionParam: Record<string, string> = opts.occasionName ? { o: opts.occasionName } : {};
   const buttons = [
     button(uri(contact ? "LINE 傳送（選他）" : "LINE 群發（可多選）", lineShareUrl(messageText)), "primary"),
     button(waPhone ? uri("WhatsApp 直接開聊天", whatsappUrl(waPhone, messageText) ?? "") : null),
     button(contact?.line_id ? uri("開他的 LINE 個人頁", lineProfileUrl(contact.line_id)) : null),
     button(
       contact?.wechat_id || !contact
-        ? postback("WeChat：給我純文字複製", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, v: opts.variant })
+        ? postback("WeChat：給我純文字複製", { a: "copy", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant })
         : null,
     ),
-    button(postback("🔄 換一句", { a: "msg", ...(contact ? { id: contact.id } : {}), k: opts.kind, v: opts.variant + 1, ...(opts.reminderId ? { r: opts.reminderId } : {}) })),
+    button(
+      opts.aiAvailable && contact
+        ? postback("🤖 AI 客製化", { a: "ai_msg", id: contact.id, k: opts.kind, ...occasionParam, ...(opts.reminderId ? { r: opts.reminderId } : {}) })
+        : null,
+    ),
+    button(postback("🔄 換一句", { a: "msg", ...(contact ? { id: contact.id } : {}), k: opts.kind, ...occasionParam, v: opts.variant + 1, ...(opts.reminderId ? { r: opts.reminderId } : {}) })),
     button(opts.reminderId ? postback("✅ 已傳，完成", { a: "rem_done", id: opts.reminderId }, "已傳") : null),
   ];
   return bubble({
@@ -346,11 +356,14 @@ export function sendMessageBubble(opts: {
   });
 }
 
-export function greetingKindPicker(contactId: string): LineMessage {
-  return text(
-    "要傳哪一種？",
-    (Object.keys(GREETING_LABELS) as GreetingKind[]).map((k) => postback(GREETING_LABELS[k], { a: "msg", id: contactId, k })),
-  );
+/** `occasionNames` are the owner's currently enabled greeting occasions (festival-type). */
+export function greetingKindPicker(contactId: string, occasionNames: string[]): LineMessage {
+  const items = [
+    postback(GREETING_LABELS.hello, { a: "msg", id: contactId, k: "hello" }),
+    postback(GREETING_LABELS.birthday, { a: "msg", id: contactId, k: "birthday" }),
+    ...occasionNames.map((name) => postback(`${name}祝福`, { a: "msg", id: contactId, k: "festival", o: name })),
+  ];
+  return text("要傳哪一種？", items);
 }
 
 // ---------------------------------------------------------------------------
@@ -396,10 +409,7 @@ export function taskListBubble(tasks: TaskForList[], title: string, today: strin
 
 export const MAIN_QUICK: Action[] = [
   postback("今日", { a: "cmd", c: "today" }, "今日"),
-  postback("新增人脈", { a: "cmd", c: "add" }, "新增人脈"),
   postback("找人", { a: "cmd", c: "search" }, "找人"),
-  postback("待辦", { a: "cmd", c: "tasks" }, "待辦"),
-  postback("生日", { a: "cmd", c: "birthdays" }, "生日"),
   postback("提醒", { a: "cmd", c: "reminders" }, "提醒"),
   postback("轉傳紀錄", { a: "cmd", c: "collect" }, "轉傳紀錄"),
 ];
@@ -417,7 +427,7 @@ export function helpMessages(): LineMessage[] {
         "🗒 備註 王小明 喜歡喝咖啡（長期不變的事）",
         "💬 交流 王小明 聊到他兒子要考學測（每次聊了什麼，卡片會提醒你上次聊到哪）",
         "📜 歷史 王小明（看完整交流紀錄）",
-        "🎂 生日／提醒／待辦／今日",
+        "🎂 生日／提醒／今日",
         "",
         "💬 到好友聊天室長按訊息 →「轉傳」給我（可多選）→ 選是誰 → 存成他的聊天紀錄並補上電話、Email",
         "📷 傳名片、好友個人頁或好友名片的截圖 → 直接建檔",
@@ -426,6 +436,7 @@ export function helpMessages(): LineMessage[] {
         "📄 傳 LINE／WhatsApp 匯出的聊天 .txt 或 .zip → 匯入聊天紀錄",
         "",
         "人脈卡上的「✏️ 編輯資料」會開一頁式表單，所有欄位一次填完。",
+        "選單「節日」可以自己加節日（不限三節）；傳訊息卡上有「🤖 AI 客製化」可以用。",
       ].join("\n"),
       MAIN_QUICK,
     ),

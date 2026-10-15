@@ -18,9 +18,9 @@ import {
 import { webUrl } from "@/lib/line/links";
 import { contactFormUrl, newContactFormUrl, newTaskFormUrl } from "@/lib/mini/links";
 import { isLinkSigningConfigured } from "@/lib/mini/token";
+import { aiComplete, isAiConfigured } from "@/lib/ai/openrouter";
 import { generateReminders } from "@/lib/reminders/generate";
-import { FESTIVAL_LABELS } from "@/lib/reminders/taiwan-holidays";
-import type { FestivalKey } from "@/types/database";
+import { listOccasions } from "@/lib/reminders/occasions";
 
 import {
   type BotCtx,
@@ -53,7 +53,7 @@ import { card, cards } from "./cards";
 import { type ContactDraft, extractContactFields, extractFromCommand, normalizeText } from "./extract";
 import { type Intent, parseIntent } from "./intent";
 import { type CollectState, appendToCollect, finalizeByName, finalizeNew, finalizeToContact, startCollect } from "./forward";
-import { GREETING_LABELS, type GreetingKind, greetingText } from "./templates";
+import { GREETING_LABELS, type GreetingKind, greetingText, salutation } from "./templates";
 
 // ---------------------------------------------------------------------------
 // Conversation state
@@ -185,9 +185,8 @@ async function showReminders(ctx: BotCtx): Promise<LineMessage[]> {
       dated.push({ due: r.due_date, bubble: otherReminderBubble(r, ctx.today) });
     }
   }
-  for (const [key, list] of festivals) {
-    const [festival, year] = key.split("|");
-    dated.push({ due: list[0].due_date, bubble: festivalGroupBubble(festival as FestivalKey, Number(year), list) });
+  for (const list of festivals.values()) {
+    dated.push({ due: list[0].due_date, bubble: festivalGroupBubble(list[0].festival_key!, list[0].occurrence_year!, list) });
   }
   const all = dated.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 10).map((d) => d.bubble);
   return [text(`未完成的提醒共 ${reminders.length} 則（一年內），先列最近的：`), carousel("提醒", all, MAIN_QUICK)];
@@ -479,60 +478,99 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
     }
     case "fest":
     case "fest_done": {
-      const festival = p.get("k") as FestivalKey;
+      const occasionName = p.get("k") ?? "";
       const year = Number(p.get("y"));
-      const reminders = await listPendingReminders(ctx, { dueOnOrBefore: `${year + 1}-12-31`, festivalKey: festival, year });
+      const reminders = await listPendingReminders(ctx, { dueOnOrBefore: `${year + 1}-12-31`, festivalKey: occasionName, year });
       if (a === "fest_done") {
         await setReminderStatus(ctx, reminders.map((r) => r.id), "completed");
-        return [text(`✅ ${FESTIVAL_LABELS[festival]}問候已全部標記完成（${reminders.length} 位）`, MAIN_QUICK)];
+        return [text(`✅ ${occasionName}問候已全部標記完成（${reminders.length} 位）`, MAIN_QUICK)];
       }
       const withContact = reminders.filter((r) => r.contact);
       if (withContact.length === 0) return [text("這個節日的問候都完成了 🎉", MAIN_QUICK)];
       const bubbles = withContact.slice(0, 10).map((r) =>
         sendMessageBubble({
-          title: `${FESTIVAL_LABELS[festival]} · ${r.contact!.name}`,
+          title: `${occasionName} · ${r.contact!.name}`,
           subtitle: r.contact!.title ?? undefined,
-          messageText: greetingText(festival, r.contact!, 0),
+          messageText: greetingText("festival", r.contact!, 0, occasionName),
           contact: r.contact!,
-          kind: festival,
+          kind: "festival",
+          occasionName,
           variant: 0,
           reminderId: r.id,
           accent: "#a83232",
+          aiAvailable: isAiConfigured(),
         }),
       );
       return [
-        text(`${FESTIVAL_LABELS[festival]}要問候 ${withContact.length} 位${withContact.length > 10 ? "，先列前 10 位" : ""}：`),
-        carousel(`${FESTIVAL_LABELS[festival]}問候`, bubbles),
+        text(`${occasionName}要問候 ${withContact.length} 位${withContact.length > 10 ? "，先列前 10 位" : ""}：`),
+        carousel(`${occasionName}問候`, bubbles),
       ];
     }
     case "msg":
     case "copy": {
       const kind = (p.get("k") ?? "hello") as GreetingKind;
+      const occasionName = p.get("o") ?? undefined;
       const variant = Number(p.get("v") ?? 0);
       const contact = id ? await getContact(ctx, id) : null;
       if (id && !contact) return [text("找不到這位人脈。")];
-      const message = greetingText(kind, contact, variant);
+      const message = greetingText(kind, contact, variant, occasionName);
       if (a === "copy") return [text("長按下面這則訊息即可複製 👇"), text(message)];
-      if (!p.get("k") && contact) return [greetingKindPicker(contact.id)];
+      if (!p.get("k") && contact) {
+        const occasions = await listOccasions({ supabase: ctx.supabase, ownerId: ctx.ownerId }, { enabledOnly: true });
+        return [greetingKindPicker(contact.id, occasions.map((o) => o.name))];
+      }
+      const label = kind === "festival" && occasionName ? `${occasionName}祝福` : GREETING_LABELS[kind];
       return [
         carousel(
-          `${GREETING_LABELS[kind]}`,
+          label,
           [
             sendMessageBubble({
-              title: contact ? `${GREETING_LABELS[kind]} · ${contact.name}` : GREETING_LABELS[kind],
+              title: contact ? `${label} · ${contact.name}` : label,
               messageText: message,
               contact,
               kind,
+              occasionName,
               variant,
               reminderId: p.get("r") ?? undefined,
+              aiAvailable: isAiConfigured(),
             }),
           ],
-          contact
-            ? (Object.keys(GREETING_LABELS) as GreetingKind[])
-                .filter((k) => k !== kind)
-                .map((k) => postback(GREETING_LABELS[k], { a: "msg", id: contact.id, k }))
-            : undefined,
         ),
+      ];
+    }
+    case "ai_msg": {
+      const kind = (p.get("k") ?? "hello") as GreetingKind;
+      const occasionName = p.get("o") ?? undefined;
+      const reminderId = p.get("r") ?? undefined;
+      const contact = id ? await getContact(ctx, id) : null;
+      if (!contact) return [text("找不到這位人脈。")];
+      const label = kind === "festival" && occasionName ? `${occasionName}祝福` : GREETING_LABELS[kind];
+      const touch = await lastTouchFor(ctx, contact.id);
+      const occasion = kind === "festival" ? (occasionName ?? "節日") : kind === "birthday" ? "生日" : "近況問候";
+      const prompt = [
+        `幫我用繁體中文寫一句傳給朋友的 LINE 訊息，場合是：${occasion}。`,
+        `對方稱呼：${salutation(contact)}；${contact.role_type === "boss" ? "語氣正式、有禮貌" : "語氣輕鬆、自然"}。`,
+        touch ? `我們最近一次聊到：「${touch.content.slice(0, 100)}」，如果合適可以自然地提到，讓對方感覺到我有在關心他。` : "",
+        "只要回一句訊息本文（不要加任何說明、引號或開頭「這是您要的」之類的話），50 字以內，可以加 1 個表情符號。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const result = await aiComplete(prompt);
+      if (!result.ok) return [text(`AI 暫時無法使用（${result.error}），先用這句：\n${greetingText(kind, contact, 0, occasionName)}`, MAIN_QUICK)];
+      return [
+        carousel(`${label} · ${contact.name}`, [
+          sendMessageBubble({
+            title: `🤖 ${label} · ${contact.name}`,
+            subtitle: "AI 草稿，可以直接傳或繼續調整",
+            messageText: result.text,
+            contact,
+            kind,
+            occasionName,
+            variant: 0,
+            reminderId,
+            aiAvailable: true,
+          }),
+        ]),
       ];
     }
     case "draft_ok": {

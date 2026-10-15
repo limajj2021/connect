@@ -1,5 +1,4 @@
-import { FESTIVAL_LABELS } from "./taiwan-holidays";
-import type { FestivalKey, ReminderType } from "@/types/database";
+import type { ReminderType } from "@/types/database";
 
 export const REMINDER_TYPE_LABELS: Record<ReminderType, string> = {
   festival: "節日提醒",
@@ -8,9 +7,10 @@ export const REMINDER_TYPE_LABELS: Record<ReminderType, string> = {
   meeting_followup: "會議後續待辦",
 };
 
-export function reminderTitle(reminder: { reminder_type: ReminderType; festival_key: FestivalKey | null }) {
+/** `festival_key` is the greeting occasion's own name (owner-editable), not a fixed enum. */
+export function reminderTitle(reminder: { reminder_type: ReminderType; festival_key: string | null }) {
   if (reminder.reminder_type === "festival" && reminder.festival_key) {
-    return `${FESTIVAL_LABELS[reminder.festival_key]}提醒`;
+    return `${reminder.festival_key}提醒`;
   }
   return REMINDER_TYPE_LABELS[reminder.reminder_type] ?? "提醒";
 }

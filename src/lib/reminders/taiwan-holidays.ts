@@ -1,34 +1,28 @@
 import { Lunar } from "lunar-javascript";
 
-import type { FestivalKey } from "@/types/database";
+/** An owner-editable greeting occasion: a yearly date (lunar or solar) to send a greeting for. */
+export interface GreetingOccasion {
+  id: string;
+  name: string;
+  calendar: "lunar" | "solar";
+  month: number;
+  day: number;
+  lead_days: number;
+  enabled: boolean;
+}
 
-// Lunar calendar date (month, day) for each festival. These are always the
-// non-leap-month occurrence by convention (e.g. a leap 5th month does not get
-// its own Dragon Boat Festival).
-const FESTIVAL_LUNAR_DATE: Record<FestivalKey, [month: number, day: number]> = {
-  chinese_new_year: [1, 1],
-  dragon_boat: [5, 5],
-  mid_autumn: [8, 15],
-};
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
 
-export const FESTIVAL_LABELS: Record<FestivalKey, string> = {
-  chinese_new_year: "春節",
-  dragon_boat: "端午節",
-  mid_autumn: "中秋節",
-};
-
-export const FESTIVAL_DEFAULT_LEAD_DAYS: Record<FestivalKey, number> = {
-  chinese_new_year: 14,
-  dragon_boat: 7,
-  mid_autumn: 7,
-};
-
-export const ALL_FESTIVAL_KEYS: FestivalKey[] = ["chinese_new_year", "dragon_boat", "mid_autumn"];
-
-/** Returns the Gregorian (solar) date of a festival for a given solar year, as "YYYY-MM-DD". */
-export function getFestivalSolarDate(festival: FestivalKey, solarYear: number): string {
-  const [month, day] = FESTIVAL_LUNAR_DATE[festival];
-  const lunar = Lunar.fromYmd(solarYear, month, day);
+/**
+ * Returns the Gregorian (solar) date of an occasion for a given solar year,
+ * as "YYYY-MM-DD". A lunar occurrence (e.g. 農曆正月初一) is always the
+ * non-leap-month occurrence by convention.
+ */
+export function occasionSolarDate(occasion: Pick<GreetingOccasion, "calendar" | "month" | "day">, solarYear: number): string {
+  if (occasion.calendar === "solar") return `${solarYear}-${pad2(occasion.month)}-${pad2(occasion.day)}`;
+  const lunar = Lunar.fromYmd(solarYear, occasion.month, occasion.day);
   return lunar.getSolar().toYmd();
 }
 
@@ -39,16 +33,12 @@ function addDays(isoDate: string, days: number): string {
 }
 
 /**
- * Returns the reminder due date (festival date minus lead days) for a festival
- * occurring in `solarYear`. Since the lunar year can roll the solar date into
- * January, this also checks the surrounding year when the lead window would
- * otherwise miss a festival that falls very early in `solarYear`.
+ * Returns the reminder due date (occasion date minus lead days) for an
+ * occasion occurring in `solarYear`. A lunar occasion can roll its solar date
+ * into January, so callers generating a full year's reminders should also
+ * check the surrounding years.
  */
-export function getFestivalReminderDueDate(
-  festival: FestivalKey,
-  solarYear: number,
-  leadDays: number = FESTIVAL_DEFAULT_LEAD_DAYS[festival],
-): { festivalDate: string; dueDate: string } {
-  const festivalDate = getFestivalSolarDate(festival, solarYear);
-  return { festivalDate, dueDate: addDays(festivalDate, -leadDays) };
+export function occasionReminderDueDate(occasion: GreetingOccasion, solarYear: number): { festivalDate: string; dueDate: string } {
+  const festivalDate = occasionSolarDate(occasion, solarYear);
+  return { festivalDate, dueDate: addDays(festivalDate, -occasion.lead_days) };
 }

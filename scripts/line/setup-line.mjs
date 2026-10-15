@@ -2,7 +2,7 @@
 /**
  * One-off setup for the LINE OA bot (idempotent — safe to re-run):
  *   1. points the channel's webhook at <APP_BASE_URL>/api/line/webhook and tests it
- *   2. (re)creates the 6-button rich menu from scripts/line/rich-menu.png and
+ *   2. (re)creates the 4-button rich menu from scripts/line/rich-menu.png and
  *      makes it the default for everyone who adds the account
  *
  * Usage:
@@ -40,11 +40,13 @@ await line("PUT", `${API}/v2/bot/channel/webhook/endpoint`, { endpoint });
 const test = await line("POST", `${API}/v2/bot/channel/webhook/test`, { endpoint });
 console.log("webhook:", endpoint, "test:", test.success ? "OK" : test);
 
-// 2. Rich menu: 2500x843, two rows of three.
+// 2. Rich menu: 2500x843, two rows of two (only what's actually used day to
+// day — 新增人脈/待辦/說明 are one typed word away and don't need a button).
 const W = 2500;
 const H = 843;
-const cell = (col, row) => ({ x: Math.round((W / 3) * col), y: Math.round((H / 2) * row), width: Math.round(W / 3), height: Math.round(H / 2) });
+const cell = (col, row) => ({ x: Math.round((W / 2) * col), y: Math.round((H / 2) * row), width: Math.round(W / 2), height: Math.round(H / 2) });
 const cmd = (c, label) => ({ type: "postback", label, data: `a=cmd&c=${c}`, displayText: label });
+const liff = (path, label) => (liffId ? { type: "uri", label, uri: `https://liff.line.me/${liffId}${path}` } : cmd("search", label));
 
 const existing = await line("GET", `${API}/v2/bot/richmenu/list`);
 for (const menu of existing.richmenus ?? []) {
@@ -58,15 +60,10 @@ const { richMenuId } = await line("POST", `${API}/v2/bot/richmenu`, {
   chatBarText: "選單",
   areas: [
     { bounds: cell(0, 0), action: cmd("today", "今日") },
-    { bounds: cell(1, 0), action: cmd("add", "新增人脈") },
-    // 人脈 opens the LIFF contact list when a LIFF app is configured.
-    {
-      bounds: cell(2, 0),
-      action: liffId ? { type: "uri", label: "人脈", uri: `https://liff.line.me/${liffId}/contacts` } : cmd("search", "找人"),
-    },
-    { bounds: cell(0, 1), action: cmd("tasks", "待辦") },
-    { bounds: cell(1, 1), action: cmd("reminders", "提醒") },
-    { bounds: cell(2, 1), action: cmd("help", "說明") },
+    // 人脈／節日 open LIFF pages when a LIFF app is configured, otherwise fall back to 找人.
+    { bounds: cell(1, 0), action: liff("/contacts", "人脈") },
+    { bounds: cell(0, 1), action: cmd("reminders", "提醒") },
+    { bounds: cell(1, 1), action: liff("/occasions", "節日") },
   ],
 });
 const image = await readFile(fileURLToPath(new URL("./rich-menu.png", import.meta.url)));

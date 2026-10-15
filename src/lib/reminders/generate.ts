@@ -5,7 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { taipeiToday } from "@/lib/format-date";
 import { createClient } from "@/lib/supabase/server";
 
-import { ALL_FESTIVAL_KEYS, getFestivalReminderDueDate } from "./taiwan-holidays";
+import { listOccasions } from "./occasions";
+import { occasionReminderDueDate } from "./taiwan-holidays";
 
 export interface GenerateSummary {
   festivalsCreated: number;
@@ -16,7 +17,8 @@ export interface GenerateSummary {
  * Creates festival and birthday reminders for the given solar years, skipping
  * any (contact, year[, festival]) combination that already has a reminder row.
  * Safe to re-run — existing reminders (including ones the user already marked
- * completed/skipped) are left untouched.
+ * completed/skipped) are left untouched. Festivals come from the owner's own
+ * `greeting_occasions` list, not a fixed set.
  */
 export async function generateReminders(
   years: number[],
@@ -46,21 +48,24 @@ export async function generateReminders(
   const { data: festivalContacts, error: festivalContactsError } = await festivalQuery;
   if (festivalContactsError) throw festivalContactsError;
 
+  const occasions = await listOccasions(ctx ? { supabase, ownerId: ctx.ownerId } : undefined, { enabledOnly: true });
+
   const festivalRows: Record<string, unknown>[] = [];
   for (const year of years) {
-    for (const festival of ALL_FESTIVAL_KEYS) {
-      const { dueDate, festivalDate } = getFestivalReminderDueDate(festival, year);
+    for (const occasion of occasions) {
+      const { dueDate, festivalDate } = occasionReminderDueDate(occasion, year);
       // Generating for the current year must not resurrect festivals that are
       // already over — they'd show up as overdue greetings nobody can send.
       if (festivalDate < today) continue;
       for (const contact of festivalContacts ?? []) {
-        const key = `${contact.id}|festival|${festival}|${year}`;
+        const key = `${contact.id}|festival|${occasion.name}|${year}`;
         if (existingKeys.has(key)) continue;
         festivalRows.push({
           ...ownerColumn,
           contact_id: contact.id,
           reminder_type: "festival",
-          festival_key: festival,
+          festival_key: occasion.name,
+          festival_date: festivalDate,
           occurrence_year: year,
           due_date: dueDate,
         });

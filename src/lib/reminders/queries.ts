@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import type { FestivalKey, ReminderRow, ReminderType, TaskStatus } from "@/types/database";
+import type { ReminderRow, ReminderType, TaskStatus } from "@/types/database";
 
 export interface ReminderWithContact extends ReminderRow {
   contact: { id: string; name: string } | null;
@@ -12,7 +12,7 @@ type ReminderJoinRow = ReminderRow & { contact: { id: string; name: string } | n
 export interface ReminderFilters {
   status?: TaskStatus;
   reminderType?: ReminderType;
-  festivalKey?: FestivalKey;
+  festivalKey?: string;
 }
 
 export async function listReminders(filters: ReminderFilters = {}): Promise<ReminderWithContact[]> {

@@ -3,8 +3,7 @@ import "server-only";
 import type { LineMessage } from "@/lib/line/api";
 import { carousel, postback, sendMessageBubble, taskListBubble, text } from "@/lib/line/flex";
 import { addDays } from "@/lib/format-date";
-import { FESTIVAL_LABELS, getFestivalSolarDate } from "@/lib/reminders/taiwan-holidays";
-import type { FestivalKey } from "@/types/database";
+import { isAiConfigured } from "@/lib/ai/openrouter";
 
 import { type BotCtx, type BotReminder, listPendingReminders, listPendingTasks } from "./data";
 import { daysBetween, formatShortDate } from "./dates";
@@ -32,25 +31,28 @@ export function birthdayBubble(reminder: BotReminder, today: string, variant = 0
     variant,
     reminderId: reminder.id,
     accent: "#b4436c",
+    aiAvailable: isAiConfigured(),
   });
 }
 
-export function festivalGroupBubble(festival: FestivalKey, year: number, reminders: BotReminder[], variant = 0) {
-  const festivalDate = getFestivalSolarDate(festival, year);
+/** `occasionName` is the greeting occasion's name (e.g. "春節", "聖誕節") — any owner-defined occasion. */
+export function festivalGroupBubble(occasionName: string, year: number, reminders: BotReminder[], variant = 0) {
+  const festivalDate = reminders[0]?.festival_date ?? null;
   const names = reminders.map((r) => r.contact?.name).filter(Boolean) as string[];
   const bubble = sendMessageBubble({
-    title: `🧧 ${FESTIVAL_LABELS[festival]}問候（${reminders.length} 位）`,
-    subtitle: `${FESTIVAL_LABELS[festival]} ${formatShortDate(festivalDate)}｜${names.slice(0, 6).join("、")}${names.length > 6 ? "…" : ""}`,
-    messageText: greetingText(festival, null, variant),
+    title: `🧧 ${occasionName}問候（${reminders.length} 位）`,
+    subtitle: `${occasionName}${festivalDate ? ` ${formatShortDate(festivalDate)}` : ""}｜${names.slice(0, 6).join("、")}${names.length > 6 ? "…" : ""}`,
+    messageText: greetingText("festival", null, variant, occasionName),
     contact: null,
-    kind: festival,
+    kind: "festival",
+    occasionName,
     variant,
     accent: "#a83232",
   });
   const footer = (bubble as { footer?: { contents: unknown[] } }).footer;
   footer?.contents.push(
-    { type: "button", style: "secondary", height: "sm", action: postback("👥 逐一個人化傳送", { a: "fest", k: festival, y: year }) },
-    { type: "button", style: "link", height: "sm", action: postback("✅ 全部已傳", { a: "fest_done", k: festival, y: year }, `${FESTIVAL_LABELS[festival]}全部已傳`) },
+    { type: "button", style: "secondary", height: "sm", action: postback("👥 逐一個人化傳送", { a: "fest", k: occasionName, y: year }) },
+    { type: "button", style: "link", height: "sm", action: postback("✅ 全部已傳", { a: "fest_done", k: occasionName, y: year }, `${occasionName}全部已傳`) },
   );
   return bubble;
 }
@@ -125,6 +127,8 @@ export async function buildDigest(
 
     if (isBirthday) birthdays.push(reminder);
     else if (reminder.reminder_type === "festival" && reminder.festival_key && reminder.occurrence_year) {
+      // The occasion name can contain "|" in theory, but owner-typed names in
+      // practice never do; splitting back on the last "|" keeps it exact regardless.
       const groupKey = `${reminder.festival_key}|${reminder.occurrence_year}`;
       festivals.set(groupKey, [...(festivals.get(groupKey) ?? []), reminder]);
     } else others.push(reminder);
@@ -132,17 +136,14 @@ export async function buildDigest(
 
   const bubbles: Record<string, unknown>[] = [
     ...birthdays.map((r) => birthdayBubble(r, today)),
-    ...[...festivals.entries()].map(([groupKey, list]) => {
-      const [festival, year] = groupKey.split("|");
-      return festivalGroupBubble(festival as FestivalKey, Number(year), list);
-    }),
+    ...[...festivals.entries()].map(([, list]) => festivalGroupBubble(list[0].festival_key!, list[0].occurrence_year!, list)),
     ...others.map((r) => otherReminderBubble(r, today)),
   ];
 
   const summary: string[] = [];
   if (birthdays.length > 0) summary.push(`🎂 生日 ${birthdays.length} 位：${birthdays.map((b) => b.contact!.name).join("、")}`);
-  for (const [groupKey, list] of festivals) {
-    summary.push(`🧧 ${FESTIVAL_LABELS[groupKey.split("|")[0] as FestivalKey]}問候 ${list.length} 位`);
+  for (const list of festivals.values()) {
+    summary.push(`🧧 ${list[0].festival_key}問候 ${list.length} 位`);
   }
   if (others.length > 0) summary.push(`⏰ 其他提醒 ${others.length} 則`);
   if (taskTotal > 0) summary.push(`📝 今天到期／逾期待辦 ${taskTotal} 件`);

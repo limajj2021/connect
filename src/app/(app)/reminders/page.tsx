@@ -7,16 +7,15 @@ import { ReminderList } from "@/components/reminder-list";
 import { TaskList } from "@/components/task-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listContactsLite } from "@/lib/contacts/queries";
+import { listOccasions } from "@/lib/reminders/occasions";
 import { listReminders } from "@/lib/reminders/queries";
 import { listTasks } from "@/lib/tasks/queries";
-import type { FestivalKey, ReminderType, TaskStatus } from "@/types/database";
+import type { ReminderType, TaskStatus } from "@/types/database";
 
 import { CustomReminderForm } from "./custom-reminder-form";
 import { GenerateRemindersButton } from "./generate-reminders-button";
 import { RemindersFilterBar } from "./reminders-filter-bar";
 import { SendEmailsButton } from "./send-emails-button";
-
-const FESTIVAL_KEYS = new Set(["chinese_new_year", "dragon_boat", "mid_autumn"]);
 
 export default async function RemindersPage(props: PageProps<"/reminders">) {
   const searchParams = await props.searchParams;
@@ -25,12 +24,14 @@ export default async function RemindersPage(props: PageProps<"/reminders">) {
   const tabParam = searchParams.tab === "tasks" ? "tasks" : "reminders";
 
   const status: TaskStatus | undefined = statusParam === "all" ? undefined : (statusParam as TaskStatus);
-  const reminderType: ReminderType | undefined = FESTIVAL_KEYS.has(typeParam)
+  const occasions = await listOccasions();
+  const occasionNames = new Set(occasions.map((o) => o.name));
+  const reminderType: ReminderType | undefined = occasionNames.has(typeParam)
     ? "festival"
     : typeParam === "all"
       ? undefined
       : (typeParam as ReminderType);
-  const festivalKey: FestivalKey | undefined = FESTIVAL_KEYS.has(typeParam) ? (typeParam as FestivalKey) : undefined;
+  const festivalKey: string | undefined = occasionNames.has(typeParam) ? typeParam : undefined;
 
   const [reminders, pendingTasks, contactOptions] = await Promise.all([
     listReminders({ status, reminderType, festivalKey }),
@@ -59,7 +60,7 @@ export default async function RemindersPage(props: PageProps<"/reminders">) {
 
         <TabsContent value="reminders" className="space-y-4 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <RemindersFilterBar />
+            <RemindersFilterBar occasionNames={occasions.map((o) => o.name)} />
           </div>
           <CustomReminderForm contactOptions={contactOptions} />
           {reminders.length === 0 ? (

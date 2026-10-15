@@ -1,12 +1,13 @@
 import type { RoleType } from "@/types/database";
 
-export type GreetingKind = "birthday" | "chinese_new_year" | "dragon_boat" | "mid_autumn" | "hello";
+// "festival" covers every owner-editable greeting occasion (春節, 聖誕節, 跨年,
+// or anything else added from the LIFF "節日" page) — one generic template
+// interpolated with the occasion's own name, instead of one per festival.
+export type GreetingKind = "birthday" | "festival" | "hello";
 
 export const GREETING_LABELS: Record<GreetingKind, string> = {
   birthday: "生日祝福",
-  chinese_new_year: "新年祝福",
-  dragon_boat: "端午祝福",
-  mid_autumn: "中秋祝福",
+  festival: "節日祝福",
   hello: "近況問候",
 };
 
@@ -26,26 +27,13 @@ const TEMPLATES: Record<GreetingKind, { formal: string[]; casual: string[]; broa
     casual: ["{稱呼}生日快樂！🎂 新的一歲一切順心，有空約吃飯～", "生日快樂{稱呼}！🎉 祝你天天開心、心想事成！"],
     broadcast: ["生日快樂！🎂 祝你新的一歲一切順心！"],
   },
-  chinese_new_year: {
+  festival: {
     formal: [
-      "{稱呼}您好，新春將至，敬祝您新年快樂、闔家平安、鴻圖大展！感謝這一年來的照顧與支持 🧧",
-      "{稱呼}新年快樂！祝您新的一年身體健康、事業興隆、萬事如意 🧧",
+      "{稱呼}您好，{節日}將至，敬祝您{節日}快樂、闔家平安！感謝這段時間的照顧與支持 🎉",
+      "{稱呼}{節日}快樂！祝您事業順利、萬事如意 🎉",
     ],
-    casual: ["{稱呼}新年快樂！🧧 祝你新的一年順順利利、身體健康！", "新年快樂{稱呼}！🧧 新的一年一起加油，有空約～"],
-    broadcast: [
-      "新春將至，敬祝您新年快樂、闔家平安、萬事如意！感謝這一年來的照顧與支持 🧧",
-      "新年快樂！🧧 祝您新的一年身體健康、事業順利、心想事成！",
-    ],
-  },
-  dragon_boat: {
-    formal: ["{稱呼}您好，端午佳節將至，敬祝您端午節快樂、闔家安康 🐉", "{稱呼}端午節快樂！祝您身體健康、事業順利 🎋"],
-    casual: ["{稱呼}端午節快樂！🐉 記得吃粽子～", "端午快樂{稱呼}！🎋 連假好好休息！"],
-    broadcast: ["端午佳節將至，敬祝您端午節快樂、闔家安康 🐉"],
-  },
-  mid_autumn: {
-    formal: ["{稱呼}您好，中秋佳節將至，敬祝您中秋節快樂、月圓人團圓 🌕", "{稱呼}中秋節快樂！祝您闔家團圓、平安喜樂 🥮"],
-    casual: ["{稱呼}中秋節快樂！🌕 烤肉吃起來～", "中秋快樂{稱呼}！🥮 祝你跟家人團團圓圓！"],
-    broadcast: ["中秋佳節將至，敬祝您中秋節快樂、月圓人團圓 🌕"],
+    casual: ["{稱呼}{節日}快樂！🎉 祝你一切順心！", "{節日}快樂{稱呼}！🎉 有空約～"],
+    broadcast: ["{節日}將至，敬祝您{節日}快樂！感謝這段時間的照顧與支持 🎉"],
   },
   hello: {
     formal: ["{稱呼}您好，近來一切都好嗎？好一陣子沒向您問候了，有機會再拜訪您。", "{稱呼}您好，最近忙嗎？想跟您約個時間聊聊近況。"],
@@ -82,15 +70,14 @@ export function salutation(person: Person): string {
   return name;
 }
 
-export function greetingVariants(kind: GreetingKind, person: Person | null): string[] {
+export function greetingVariants(kind: GreetingKind, person: Person | null, occasionName?: string): string[] {
   const set = TEMPLATES[kind];
-  if (!person) return set.broadcast;
-  const list = person.role_type === "boss" ? set.formal : set.casual;
-  const who = salutation(person);
-  return list.map((t) => t.replaceAll("{稱呼}", who));
+  const list = person ? (person.role_type === "boss" ? set.formal : set.casual) : set.broadcast;
+  const who = person ? salutation(person) : "";
+  return list.map((t) => t.replaceAll("{稱呼}", who).replaceAll("{節日}", occasionName ?? "佳節"));
 }
 
-export function greetingText(kind: GreetingKind, person: Person | null, variant = 0): string {
-  const variants = greetingVariants(kind, person);
+export function greetingText(kind: GreetingKind, person: Person | null, variant = 0, occasionName?: string): string {
+  const variants = greetingVariants(kind, person, occasionName);
   return variants[((variant % variants.length) + variants.length) % variants.length];
 }

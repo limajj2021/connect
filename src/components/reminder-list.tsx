@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { deleteReminder, setReminderStatus } from "@/lib/reminders/actions";
-import { FESTIVAL_LABELS } from "@/lib/reminders/taiwan-holidays";
 import type { ReminderWithContact } from "@/lib/reminders/queries";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -26,9 +25,11 @@ const TYPE_LABELS: Record<string, string> = {
   meeting_followup: "會議後續",
 };
 
+// `festival_key` is the greeting occasion's own (owner-editable) name — it is
+// already the label, not a fixed-enum lookup.
 function reminderLabel(reminder: ReminderWithContact) {
   if (reminder.reminder_type === "festival" && reminder.festival_key) {
-    return FESTIVAL_LABELS[reminder.festival_key];
+    return reminder.festival_key;
   }
   return TYPE_LABELS[reminder.reminder_type] ?? reminder.reminder_type;
 }
