@@ -3,7 +3,7 @@ import { GREETING_LABELS, type GreetingKind } from "@/lib/bot/templates";
 import type { ContactRow, TaskRow } from "@/types/database";
 
 import type { LineMessage } from "./api";
-import { lineProfileUrl, lineShareUrl, webUrl, whatsappUrl } from "./links";
+import { lineProfileUrl, lineShareUrl, whatsappUrl } from "./links";
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -182,7 +182,13 @@ export function missingFields(contact: ContactForCard): FillableField[] {
   });
 }
 
-export function contactBubble(contact: ContactForCard) {
+/** Links into the mini-forms (signed URLs, built by the bot on the server). */
+export interface ContactLinks {
+  edit: string;
+  task: string;
+}
+
+export function contactBubble(contact: ContactForCard, links?: ContactLinks) {
   const lines: [string, string | null][] = [
     ["公司", contact.company],
     ["職稱", contact.title],
@@ -203,38 +209,27 @@ export function contactBubble(contact: ContactForCard) {
   return bubble({
     title: `${contact.is_important ? "★ " : ""}${contact.name}`,
     subtitle: [contact.title, contact.company].filter(Boolean).join(" · ") || undefined,
-    body: body.length > 0 ? body : [t("目前只有名字，按「補資料」我一項項問你。", { size: "sm", color: "#8c8c8c" })],
+    body: body.length > 0 ? body : [t("目前只有名字，按「✏️ 編輯資料」一次填完。", { size: "sm", color: "#8c8c8c" })],
     buttons: [
       button(postback("💬 傳訊息", { a: "msg", id: contact.id, k: "hello" }), "primary"),
-      button(missing.length > 0 ? postback("✏️ 補資料", { a: "fill", id: contact.id }, `補 ${contact.name} 的資料`) : null),
-      button(postback("📝 加待辦", { a: "task", id: contact.id }, `幫 ${contact.name} 加待辦`)),
-      button(postback("⋯ 更多", { a: "more", id: contact.id })),
+      button(
+        (links ? uri(missing.length > 0 ? "✏️ 補齊資料" : "✏️ 編輯資料", links.edit) : null) ??
+          postback("✏️ 編輯資料", { a: "fill", id: contact.id }),
+      ),
+      button((links ? uri("📝 加待辦", links.task) : null) ?? postback("📝 加待辦", { a: "task", id: contact.id })),
     ],
   });
 }
 
-export function contactCards(contacts: ContactForCard[], intro?: string): LineMessage[] {
+export function contactCards(
+  contacts: ContactForCard[],
+  intro?: string,
+  linksFor?: (contact: ContactForCard) => ContactLinks | undefined,
+): LineMessage[] {
   const messages: LineMessage[] = [];
   if (intro) messages.push(text(intro));
-  messages.push(carousel(contacts.map((c) => c.name).join("、"), contacts.slice(0, 10).map(contactBubble)));
+  messages.push(carousel(contacts.map((c) => c.name).join("、"), contacts.slice(0, 10).map((c) => contactBubble(c, linksFor?.(c)))));
   return messages;
-}
-
-export function contactMoreMenu(contact: ContactForCard): LineMessage {
-  return text(`${contact.name}：要做什麼？`, [
-    postback("改公司", { a: "edit", id: contact.id, f: "company" }),
-    postback("改職稱", { a: "edit", id: contact.id, f: "title" }),
-    postback("改電話", { a: "edit", id: contact.id, f: "phone" }),
-    postback("改生日", { a: "edit", id: contact.id, f: "birthday" }),
-    postback("改身分", { a: "edit", id: contact.id, f: "role_type" }),
-    postback("改 LINE", { a: "edit", id: contact.id, f: "line_id" }),
-    postback("改 WhatsApp", { a: "edit", id: contact.id, f: "whatsapp_phone" }),
-    postback("改 WeChat", { a: "edit", id: contact.id, f: "wechat_id" }),
-    postback("加備註", { a: "edit", id: contact.id, f: "notes" }),
-    postback(contact.is_important ? "取消重要" : "設為重要", { a: "star", id: contact.id }),
-    postback("🗑 刪除", { a: "del", id: contact.id }),
-    uri("網頁版", webUrl(`/contacts/${contact.id}`))!,
-  ]);
 }
 
 export function draftBubble(draft: ContactDraft, source: string) {
@@ -381,7 +376,7 @@ export function helpMessages(): LineMessage[] {
         "（LINE 的「分享好友」機器人收不到，請改用轉傳或截圖）",
         "📄 傳 LINE／WhatsApp 匯出的聊天 .txt 或 .zip → 匯入聊天紀錄",
         "",
-        "打「取消」可結束目前的問答。",
+        "人脈卡上的「✏️ 編輯資料」會開一頁式表單，所有欄位一次填完。",
       ].join("\n"),
       MAIN_QUICK,
     ),

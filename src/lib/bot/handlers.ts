@@ -2,19 +2,12 @@ import "server-only";
 
 import type { LineMessage } from "@/lib/line/api";
 import {
-  FIELD_LABELS,
   MAIN_QUICK,
   type ContactForCard,
-  type FillableField,
   carousel,
-  contactBubble,
-  contactCards,
-  contactMoreMenu,
   draftBubble,
   greetingKindPicker,
   helpMessages,
-  messageAction,
-  missingFields,
   noticeCard,
   postback,
   sendMessageBubble,
@@ -23,6 +16,8 @@ import {
   uri,
 } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
+import { contactFormUrl, newContactFormUrl, newTaskFormUrl } from "@/lib/mini/links";
+import { isLinkSigningConfigured } from "@/lib/mini/token";
 import { generateReminders } from "@/lib/reminders/generate";
 import { FESTIVAL_LABELS } from "@/lib/reminders/taiwan-holidays";
 import type { FestivalKey } from "@/types/database";
@@ -50,7 +45,8 @@ import {
 } from "./data";
 import { extractDueDate, formatShortDate } from "./dates";
 import { birthdayBubble, buildDigest, festivalGroupBubble, otherReminderBubble } from "./digest";
-import { type ContactDraft, extractContactFields, extractFromCommand, normalizePhone, normalizeText, parseBirthday } from "./extract";
+import { card, cards } from "./cards";
+import { type ContactDraft, extractContactFields, extractFromCommand, normalizeText } from "./extract";
 import { type Intent, parseIntent } from "./intent";
 import { type CollectState, appendToCollect, finalizeByName, finalizeNew, finalizeToContact, startCollect } from "./forward";
 import { GREETING_LABELS, type GreetingKind, greetingText } from "./templates";
@@ -59,80 +55,26 @@ import { GREETING_LABELS, type GreetingKind, greetingText } from "./templates";
 // Conversation state
 // ---------------------------------------------------------------------------
 
-type EditableField = FillableField | "notes" | "name";
-
 export type FlowState =
-  | { flow: "fill"; contactId: string; queue: FillableField[] }
-  | { flow: "edit"; contactId: string; field: EditableField }
   | { flow: "draft"; draft: ContactDraft; source: string; editing?: "name" | "company" }
   | { flow: "await_add" }
   | { flow: "await_search" }
-  | { flow: "await_task"; contactId?: string }
   | { flow: "confirm_delete"; contactId: string }
   | CollectState;
 
-const STOP_QUICK = [messageAction("略過", "略過"), postback("結束", { a: "stop" }, "結束")];
+const CANCEL_QUICK = [postback("取消", { a: "stop" }, "取消")];
 
-function questionFor(field: EditableField, contact: Pick<ContactForCard, "name" | "phone">): LineMessage {
-  const contactName = contact.name;
-  const label = FIELD_LABELS[field];
-  if (field === "role_type") {
-    return text(`${contactName} 是老闆嗎？`, [messageAction("老闆", "老闆"), messageAction("非老闆", "非老闆"), ...STOP_QUICK]);
+/**
+ * Editing happens in a one-screen form (signed link, opens over the chat)
+ * instead of question-by-question chat — keeps the conversation clean.
+ */
+function editFormNotice(contact: Pick<ContactForCard, "id" | "name">): LineMessage {
+  if (!isLinkSigningConfigured()) {
+    return text(`請到網頁編輯「${contact.name}」：`, [uri("開啟網頁", webUrl(`/contacts/${contact.id}`))!]);
   }
-  const hints: Partial<Record<EditableField, string>> = {
-    birthday: "（例如 3/4 或 1990/3/4）",
-    phone: "（手機或市話）",
-    whatsapp_phone: "（含國碼更好，例如 +886912345678）",
-    line_id: "（對方可被搜尋的 LINE ID）",
-    notes: "（喜好、家人、認識經過…都可以）",
-  };
-  // Most Taiwanese WhatsApp numbers are just the mobile number — offer it.
-  const sameAsPhone =
-    field === "whatsapp_phone" && contact.phone && /^(09|\+?8869)/.test(contact.phone)
-      ? [messageAction(`同電話 ${contact.phone}`.slice(0, 20), contact.phone)]
-      : [];
-  return text(`${contactName} 的${label}是？${hints[field] ?? ""}`, [...sameAsPhone, ...STOP_QUICK]);
-}
-
-/** Parses one answer for a field; returns the DB patch, or an error message to re-ask. */
-function parseAnswer(field: EditableField, answer: string, existing: ContactForCard | null): { patch?: Record<string, unknown>; error?: string } {
-  const value = normalizeText(answer).trim();
-  switch (field) {
-    case "role_type":
-      if (/非老闆|不是|員工|non/i.test(value)) return { patch: { role_type: "non_boss" } };
-      if (/老闆|是|boss/i.test(value)) return { patch: { role_type: "boss" } };
-      return { error: "請選「老闆」或「非老闆」" };
-    case "birthday": {
-      const parsed = parseBirthday(value);
-      if (!parsed) return { error: "看不懂這個日期，請用 3/4 或 1990/3/4 的格式" };
-      return { patch: { birthday_month: parsed.month, birthday_day: parsed.day, ...(parsed.year ? { birthday_year: parsed.year } : {}) } };
-    }
-    case "phone":
-    case "whatsapp_phone": {
-      const phone = normalizePhone(value);
-      if (phone.replace(/\D/g, "").length < 8) return { error: "電話號碼好像不完整，再輸入一次？" };
-      return { patch: { [field]: phone } };
-    }
-    case "email":
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { error: "Email 格式不對，再輸入一次？" };
-      return { patch: { email: value.toLowerCase() } };
-    case "notes": {
-      const stamped = value;
-      return { patch: { notes: existing?.notes ? `${existing.notes}\n${stamped}` : stamped } };
-    }
-    default:
-      if (!value) return { error: "請輸入內容，或按「略過」" };
-      return { patch: { [field]: value.slice(0, 200) } };
-  }
-}
-
-async function askNextFill(ctx: BotCtx, contact: ContactForCard, queue: FillableField[], prefix: LineMessage[] = []) {
-  if (queue.length === 0) {
-    await saveSession(ctx, null);
-    return [...prefix, text("👌 資料補好了："), carousel(contact.name, [contactBubble(contact)], MAIN_QUICK)];
-  }
-  await saveSession(ctx, { flow: "fill", contactId: contact.id, queue } satisfies FlowState);
-  return [...prefix, questionFor(queue[0], contact)];
+  return noticeCard(`編輯 ${contact.name}`, `✏️ ${contact.name}`, "所有欄位一次填完，存檔後自動關閉", [
+    uri("開啟編輯表單", contactFormUrl(contact.id))!,
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,34 +83,31 @@ async function askNextFill(ctx: BotCtx, contact: ContactForCard, queue: Fillable
 
 async function createFromDraft(ctx: BotCtx, draft: ContactDraft): Promise<LineMessage[]> {
   const contact = await createContact(ctx, draft);
-  const missing = missingFields(contact);
-  const created = text(`✅ 已建立「${contact.name}」`);
-  if (missing.length === 0) {
-    await saveSession(ctx, null);
-    return [created, carousel(contact.name, [contactBubble(contact)], MAIN_QUICK)];
-  }
-  return askNextFill(ctx, contact, missing, [
-    created,
-    text(`還缺 ${missing.map((f) => FIELD_LABELS[f]).join("、")}，我一項項問你，不知道就按「略過」。`),
-  ]);
+  await saveSession(ctx, null);
+  return [text(`✅ 已建立「${contact.name}」，缺的資料按「✏️ 補齊資料」一次填完：`), carousel(contact.name, [card(contact)], MAIN_QUICK)];
 }
 
 async function startAddContact(ctx: BotCtx, args: string): Promise<LineMessage[]> {
   if (!args.trim()) {
     await saveSession(ctx, { flow: "await_add" } satisfies FlowState);
-    return [text("請輸入名字，可以一起打公司、職稱、電話、生日，例如：\n王小明 台積電 經理 0912345678 生日3/4\n\n📷 也可以傳名片、好友個人頁或好友名片的截圖，我會直接建檔。\n💬 或到他的聊天室長按訊息 →「轉傳」給我。\n（LINE 的「分享好友」機器人收不到）", [postback("取消", { a: "stop" }, "取消")])];
+    return [
+      text(
+        "直接打一行就好，例如：\n王小明 台積電 經理 0912345678 生日3/4\n\n📝 或用表單一次填完\n📷 傳名片／好友個人頁截圖，直接建檔\n💬 到他的聊天室長按訊息 →「轉傳」給我",
+        [...(isLinkSigningConfigured() ? [uri("📝 用表單新增", newContactFormUrl())!] : []), ...CANCEL_QUICK],
+      ),
+    ];
   }
   const draft = extractFromCommand(args);
   if (!draft.name) {
     await saveSession(ctx, { flow: "draft", draft, source: "文字輸入", editing: "name" } satisfies FlowState);
-    return [text("這位的名字是？", STOP_QUICK)];
+    return [text("這位的名字是？", CANCEL_QUICK)];
   }
   const duplicates = await findContactByExactName(ctx, draft.name);
   if (duplicates.length > 0) {
     await saveSession(ctx, { flow: "draft", draft, source: "文字輸入" } satisfies FlowState);
     return [
       text(`已經有 ${duplicates.length} 位叫「${draft.name}」的人脈：`),
-      carousel(draft.name, duplicates.map(contactBubble)),
+      carousel(draft.name, duplicates.map(card)),
       draftBubble(draft, "要另外再建一位嗎？"),
     ];
   }
@@ -184,15 +123,22 @@ async function showSearch(ctx: BotCtx, query: string): Promise<LineMessage[]> {
   if (contacts.length === 0) {
     return [text(`找不到「${query}」。`, [postback(`新增「${query.slice(0, 10)}」`, { a: "cmd", c: "add_named", n: query.slice(0, 50) }, `新增 ${query}`), ...MAIN_QUICK])];
   }
-  return contactCards(contacts, contacts.length > 1 ? `找到 ${contacts.length} 位：` : undefined);
+  return cards(contacts, contacts.length > 1 ? `找到 ${contacts.length} 位：` : undefined);
 }
 
 async function showTasks(ctx: BotCtx): Promise<LineMessage[]> {
   const { tasks, total } = await listPendingTasks(ctx, { limit: 10 });
-  if (total === 0) return [text("目前沒有待辦 🎉\n新增請打：待辦 內容 日期，例如「待辦 寄報價給王小明 明天」", MAIN_QUICK)];
+  if (total === 0) {
+    return [
+      text("目前沒有待辦 🎉\n新增請打：待辦 內容 日期，例如「待辦 寄報價給王小明 明天」", [
+        ...(isLinkSigningConfigured() ? [uri("📝 新增待辦", newTaskFormUrl())!] : []),
+        ...MAIN_QUICK,
+      ]),
+    ];
+  }
   return [
     carousel("待辦清單", [taskListBubble(tasks, `📝 待辦（${total}）`, ctx.today)], [
-      postback("新增待辦", { a: "task" }, "新增待辦"),
+      ...(isLinkSigningConfigured() ? [uri("📝 新增待辦", newTaskFormUrl())!] : []),
       ...MAIN_QUICK,
     ]),
   ];
@@ -266,7 +212,10 @@ async function logMeeting(ctx: BotCtx, input: string): Promise<LineMessage[]> {
     text(
       [`✅ 已記錄會議（${formatShortDate(meetingDate)}）`, mentioned.length > 0 ? `👥 ${mentioned.map((c) => c.name).join("、")}` : "👥 沒認出人脈（記得在內容寫上名字）", `📝 ${title}`].join("\n"),
       mentioned.length > 0
-        ? [postback("加後續待辦", { a: "task", id: mentioned[0].id }, `幫 ${mentioned[0].name} 加待辦`), ...MAIN_QUICK.slice(0, 3)]
+        ? [
+            ...(isLinkSigningConfigured() ? [uri("📝 加後續待辦", newTaskFormUrl(mentioned[0].id))!] : []),
+            ...MAIN_QUICK.slice(0, 3),
+          ]
         : MAIN_QUICK,
     ),
   ];
@@ -284,7 +233,7 @@ async function addNote(ctx: BotCtx, name: string, note: string): Promise<LineMes
 
 async function handleUnknown(ctx: BotCtx, input: string): Promise<LineMessage[]> {
   const exact = await findContactByExactName(ctx, input);
-  if (exact.length > 0) return contactCards(exact);
+  if (exact.length > 0) return cards(exact);
   // Anything else is most likely a message forwarded from a friend's chat (or
   // pasted details): park it and ask whose conversation it is.
   return appendToCollect(ctx, null, [input]);
@@ -308,7 +257,7 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
     case "list_contacts": {
       const { contacts, total } = await recentContacts(ctx, 10);
       if (total === 0) return [text("還沒有任何人脈，打「新增 名字」或傳名片截圖開始吧！", MAIN_QUICK)];
-      return contactCards(contacts, `共 ${total} 位人脈，最近新增的 ${contacts.length} 位：`);
+      return cards(contacts, `共 ${total} 位人脈，最近新增的 ${contacts.length} 位：`);
     }
     case "list_tasks":
       return showTasks(ctx);
@@ -349,15 +298,12 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
 // ---------------------------------------------------------------------------
 
 async function handleFlowAnswer(ctx: BotCtx, state: FlowState, input: string): Promise<LineMessage[]> {
-  const skip = /^(略過|跳過|不知道|skip|pass)$/i.test(input.trim());
   switch (state.flow) {
     case "await_add":
       return startAddContact(ctx, input);
     case "await_search":
       await saveSession(ctx, null);
       return showSearch(ctx, input);
-    case "await_task":
-      return addTask(ctx, input, state.contactId);
     case "collect":
       return appendToCollect(ctx, state, [input]);
     case "confirm_delete":
@@ -366,7 +312,7 @@ async function handleFlowAnswer(ctx: BotCtx, state: FlowState, input: string): P
     case "draft": {
       const draft = { ...state.draft };
       if (state.editing === "name") {
-        if (skip || !input.trim()) return [text("建立人脈至少要有名字喔，這位的名字是？", STOP_QUICK)];
+        if (!input.trim()) return [text("建立人脈至少要有名字喔，這位的名字是？", CANCEL_QUICK)];
         draft.name = normalizeText(input).trim().slice(0, 100);
       } else if (state.editing === "company") {
         const parts = normalizeText(input).trim().split(/\s+/);
@@ -380,26 +326,6 @@ async function handleFlowAnswer(ctx: BotCtx, state: FlowState, input: string): P
       }
       await saveSession(ctx, { flow: "draft", draft, source: state.source } satisfies FlowState);
       return [draftBubble(draft, state.source)];
-    }
-    case "fill":
-    case "edit": {
-      const contact = await getContact(ctx, state.contactId);
-      if (!contact) {
-        await saveSession(ctx, null);
-        return [text("找不到這位人脈了（可能已刪除）。", MAIN_QUICK)];
-      }
-      const field = state.flow === "fill" ? state.queue[0] : state.field;
-      let updated = contact;
-      if (!skip) {
-        const { patch, error } = parseAnswer(field, input, contact);
-        if (error) return [text(error, STOP_QUICK)];
-        updated = await updateContact(ctx, contact.id, patch!);
-      }
-      if (state.flow === "edit") {
-        await saveSession(ctx, null);
-        return [text(skip ? "好，沒有更改。" : `✅ 已更新${FIELD_LABELS[field]}`), carousel(updated.name, [contactBubble(updated)], MAIN_QUICK)];
-      }
-      return askNextFill(ctx, updated, state.queue.slice(1));
     }
   }
 }
@@ -453,23 +379,14 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       return [text("好，先這樣。", MAIN_QUICK)];
     case "contact": {
       const contact = await getContact(ctx, id);
-      return contact ? contactCards([contact]) : [text("找不到這位人脈。")];
+      return contact ? cards([contact]) : [text("找不到這位人脈。")];
     }
-    case "more": {
-      const contact = await getContact(ctx, id);
-      return contact ? [contactMoreMenu(contact)] : [text("找不到這位人脈。")];
-    }
-    case "fill": {
-      const contact = await getContact(ctx, id);
-      if (!contact) return [text("找不到這位人脈。")];
-      return askNextFill(ctx, contact, missingFields(contact));
-    }
+    // Buttons on cards sent before the form existed ("補資料", "⋯ 更多", "改…").
+    case "more":
+    case "fill":
     case "edit": {
       const contact = await getContact(ctx, id);
-      if (!contact) return [text("找不到這位人脈。")];
-      const field = (p.get("f") ?? "notes") as EditableField;
-      await saveSession(ctx, { flow: "edit", contactId: id, field } satisfies FlowState);
-      return [questionFor(field, contact)];
+      return contact ? [editFormNotice(contact)] : [text("找不到這位人脈。")];
     }
     case "star": {
       const contact = await getContact(ctx, id);
@@ -498,8 +415,9 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
     }
     case "task": {
       const contact = id ? await getContact(ctx, id) : null;
-      await saveSession(ctx, { flow: "await_task", contactId: contact?.id } satisfies FlowState);
-      return [text(`${contact ? `幫 ${contact.name} ` : ""}要做什麼？可以加日期，例如「明天寄報價」。`, [postback("取消", { a: "stop" }, "取消")])];
+      const hint = `也可以直接打：待辦 ${contact ? `${contact.name} ` : ""}寄報價 明天`;
+      if (!isLinkSigningConfigured()) return [text(hint, MAIN_QUICK)];
+      return [noticeCard("新增待辦", `📝 新增待辦${contact ? ` · ${contact.name}` : ""}`, hint, [uri("開啟待辦表單", newTaskFormUrl(contact?.id))!])];
     }
     case "task_done": {
       const title = await setTaskStatus(ctx, id, "completed");
@@ -573,7 +491,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       if (state?.flow !== "draft") return [text("這份資料已過期，請重新傳一次。", MAIN_QUICK)];
       if (!state.draft.name) {
         await saveSession(ctx, { ...state, editing: "name" });
-        return [text("這位的名字是？", STOP_QUICK)];
+        return [text("這位的名字是？", CANCEL_QUICK)];
       }
       return createFromDraft(ctx, state.draft);
     }
@@ -582,7 +500,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       if (state?.flow !== "draft") return [text("這份資料已過期，請重新傳一次。", MAIN_QUICK)];
       const field = p.get("f") === "company" ? "company" : "name";
       await saveSession(ctx, { ...state, editing: field });
-      return [text(field === "name" ? "正確的名字是？" : "請輸入「公司 職稱」，例如：台積電 經理", STOP_QUICK)];
+      return [text(field === "name" ? "正確的名字是？" : "請輸入「公司 職稱」，例如：台積電 經理", CANCEL_QUICK)];
     }
     case "merge": {
       // Fold a pending screenshot draft into an existing contact: only fills
@@ -598,7 +516,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       if (state.draft.notes) patch.notes = contact.notes ? `${contact.notes}\n${state.draft.notes}` : state.draft.notes;
       const updated = Object.keys(patch).length > 0 ? await updateContact(ctx, id, patch) : contact;
       await saveSession(ctx, null);
-      return [text(`✅ 已把截圖資料併入「${updated.name}」`), carousel(updated.name, [contactBubble(updated)], MAIN_QUICK)];
+      return [text(`✅ 已把截圖資料併入「${updated.name}」`), carousel(updated.name, [card(updated)], MAIN_QUICK)];
     }
     case "collect_to":
     case "collect_new":
@@ -622,8 +540,8 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
 
 /**
  * Screenshot → contact in one step (no confirmation card): create it right
- * away, offer a one-tap rename / delete in case OCR misread it, then ask for
- * whatever is still missing. Falls back to the confirmation card when the
+ * away and offer the edit form (to fix or complete it) and a one-tap delete
+ * in case OCR misread it. Falls back to the confirmation card when the
  * name is unknown or someone with that name / LINE name already exists.
  */
 export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft): Promise<LineMessage[]> {
@@ -641,7 +559,7 @@ export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft): Pr
     await saveSession(ctx, { flow: "draft", draft, source: "從圖片辨識" } satisfies FlowState);
     return [
       text(`截圖是「${draft.line_display_name ?? draft.name}」，是已經在人脈裡的這位嗎？`),
-      carousel(draft.name, unique.map(contactBubble), [
+      carousel(draft.name, unique.map(card), [
         ...unique.map((c) => postback(`是 ${c.name}`.slice(0, 20), { a: "merge", id: c.id }, `是 ${c.name}，合併資料`)),
         postback("都不是，新增", { a: "draft_ok" }, "都不是，新增一位"),
       ]),
@@ -654,16 +572,13 @@ export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft): Pr
     `✅ 已從截圖建立「${contact.name}」`,
     contact.line_display_name ? `LINE 名稱：${contact.line_display_name}` : undefined,
     [
-      postback("✏️ 名字不對，改一下", { a: "edit", id: contact.id, f: "name" }),
+      (isLinkSigningConfigured() ? uri("✏️ 補齊／修正資料", contactFormUrl(contact.id)) : null) ??
+        postback("✏️ 補齊資料", { a: "fill", id: contact.id }),
       postback("🗑 認錯了，刪除", { a: "del", id: contact.id }),
     ],
   );
-  const missing = missingFields(contact);
-  if (missing.length === 0) {
-    await saveSession(ctx, null);
-    return [notice, carousel(contact.name, [contactBubble(contact)], MAIN_QUICK)];
-  }
-  return askNextFill(ctx, contact, missing, [notice]);
+  await saveSession(ctx, null);
+  return [notice];
 }
 
 /** Shared by OCR and typed contact info: stash the draft and ask for confirmation. */

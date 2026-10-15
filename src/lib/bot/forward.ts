@@ -2,9 +2,10 @@ import "server-only";
 
 import { sha256Hex } from "@/lib/chat-import/hash";
 import type { LineMessage } from "@/lib/line/api";
-import { type ContactForCard, MAIN_QUICK, carousel, contactBubble, postback, text, uri } from "@/lib/line/flex";
+import { type ContactForCard, MAIN_QUICK, carousel, postback, text, uri } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
 
+import { card } from "./cards";
 import {
   type BotCtx,
   contactsMentionedIn,
@@ -177,7 +178,7 @@ function summary(contact: ContactForCard, count: number, importId: string, patch
         .filter(Boolean)
         .join("\n"),
     ),
-    carousel(contact.name, [contactBubble(contact)], [uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)]),
+    carousel(contact.name, [card(contact)], [uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)]),
   ];
 }
 

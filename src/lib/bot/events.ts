@@ -2,7 +2,7 @@ import "server-only";
 
 import { type LineMessage, getMessageContent, replyOrPush, showLoading } from "@/lib/line/api";
 import { lineConfig } from "@/lib/line/config";
-import { MAIN_QUICK, helpMessages, postback, text, uri } from "@/lib/line/flex";
+import { MAIN_QUICK, helpMessages, text, uri } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
 import { isOcrConfigured, ocrImage } from "@/lib/ocr/ocr-space";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";

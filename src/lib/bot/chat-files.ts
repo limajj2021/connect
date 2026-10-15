@@ -7,6 +7,8 @@ import { MAX_IMPORT_FILE_BYTES, type ParticipantMapping } from "@/lib/chat-impor
 import { type LineMessage, getProfileDisplayName } from "@/lib/line/api";
 import { type ContactForCard, MAIN_QUICK, postback, text, uri } from "@/lib/line/flex";
 import { webUrl } from "@/lib/line/links";
+import { contactFormUrl } from "@/lib/mini/links";
+import { isLinkSigningConfigured } from "@/lib/mini/token";
 
 import { type BotCtx, CONTACT_CARD_COLUMNS, createContact, updateContact } from "./data";
 import { extractContactFields, normalizePhone, parseLineDisplayName } from "./extract";
@@ -159,7 +161,11 @@ function fillQuick(outcomes: ImportOutcome[]) {
   return outcomes
     .flatMap((o) => o.created)
     .slice(0, 8)
-    .map((c) => postback(`補 ${c.name}`.slice(0, 20), { a: "fill", id: c.id }, `補 ${c.name} 的資料`));
+    .map((c) =>
+      isLinkSigningConfigured()
+        ? uri(`✏️ ${c.name}`.slice(0, 20), contactFormUrl(c.id))!
+        : postback(`補 ${c.name}`.slice(0, 20), { a: "fill", id: c.id }, `補 ${c.name} 的資料`),
+    );
 }
 
 function singleSummary(o: ImportOutcome): LineMessage[] {
