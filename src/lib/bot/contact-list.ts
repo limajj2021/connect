@@ -1,3 +1,5 @@
+import { isPlausibleName } from "./extract";
+
 /**
  * Recognises a screenshot of a LINE chat list or friend list from OCR line
  * positions, and returns the display name of every person in it — so one
@@ -30,7 +32,7 @@ const DATE_LABEL_RE =
 const GROUP_COUNT_RE = /^[(（]\d{1,4}[)）]$/;
 // List headings and tabs that share the name column on some screens.
 const LIST_UI_RE =
-  /^(?:chats?|聊天|好友|friends?|groups?|群組|favorites?|我的最愛|最愛|official accounts?|官方帳號|search|搜尋|my profile|個人檔案|birthdays?|生日|recently added|最近新增|services?|服務|home|主頁|news|新聞|wallet|錢包|keep|筆記|notes?|all|全部|unread|未讀)\s*\d*$/i;
+  /^(?:chats?|聊天|好友|friends?|groups?|群組|favorites?|我的最愛|最愛|official accounts?|官方帳號|search|搜尋|my profile|個人檔案|birthdays?|生日|recently added|最近新增|services?|服務|home|主頁|news|新聞|wallet|錢包|keep|筆記|notes?|all|全部|unread|未讀|aa|輸入訊息|message|訊息)\s*\d*$/i;
 const SENTENCE_END_RE = /[。！？!?]$/;
 
 const median = (values: number[]) => {
@@ -42,7 +44,7 @@ function cleanName(raw: string): string | null {
   const name = raw.replace(/\s+/g, " ").trim();
   if (name.length < 1 || name.length > 50) return null;
   if (LIST_UI_RE.test(name) || DATE_LABEL_RE.test(name) || SENTENCE_END_RE.test(name)) return null;
-  if (!/[\p{L}]/u.test(name)) return null; // digits / symbols only
+  if (!isPlausibleName(name)) return null; // status-bar icons, digits, symbols
   return name;
 }
 

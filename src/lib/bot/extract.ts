@@ -212,7 +212,42 @@ function withNotes(draft: ContactDraft, leftover: string[]): ContactDraft {
 const SCREEN_NOISE_RE =
   /^(?:view profile|查看個人檔案|個人檔案|加入好友|add friend|add|chat|聊天|語音通話|視訊通話|免費通話|免費視訊|voice call|video call|keep|主頁|home|投稿|posts?|封鎖|block|分享|share|已讀|read|通話|追蹤|follow|相簿|筆記|編輯|edit|設定|settings|\d{1,2}:\d{2}\s*(?:am|pm)?|(?:上午|下午)\s*\d{1,2}:\d{2})$/i;
 const PROFILE_MARKER_RE = /^(?:view profile|查看個人檔案|加入好友|add friend|語音通話|視訊通話|voice call|video call|免費通話)$/i;
+// WhatsApp's contact page ("Contact info"): rows under the name and number.
+const WHATSAPP_MARKER_RE =
+  /^(?:media,? links,? and docs|disappearing messages|lock chat|chat theme|save to photos|advanced chat privacy|encryption|媒體、連結(?:和|與)文件|訊息自動銷毀|限時訊息|鎖定聊天|聊天主題|進階聊天隱私|加密)/i;
+const CONTACT_PAGE_RE = /^(?:contact info|聯絡人資訊|聯絡資訊|聯絡人資料|business info|商業帳號資訊)$/i;
+// Buttons and setting rows on app profile pages.
+const APP_UI_RE =
+  /^(?:<|>|contact info|聯絡人資訊|聯絡資訊|voice|video|search|語音|視訊|搜尋|audio|pay|付款|manage storage|管理儲存空間|starred|已加星號|notifications|通知|.*[>›»]\s*)$/i;
 const DECORATION_RE = /^[\s*★☆♡♥✨🌟~～|｜·•]+|[\s*★☆♡♥✨🌟~～|｜·•]+$/gu;
+
+/**
+ * Rejects OCR junk read from status-bar icons and the like ("ıııl·", "٠١١١١٠"):
+ * a name needs at least two Chinese/Latin letters, and mostly letters.
+ */
+export function isPlausibleName(value: string): boolean {
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length < 2 || compact.length > 60) return false;
+  const letters = (compact.match(/[\p{Script=Han}A-Za-z]/gu) ?? []).length;
+  return letters >= 2 && letters >= compact.length * 0.5;
+}
+
+/** A line that is nothing but a phone number ("+91 6364 933 033"). */
+function wholePhone(line: string): string | undefined {
+  const match = line.match(PHONE_RE);
+  if (!match || match[0].replace(/\D/g, "").length < 8) return undefined;
+  return line.replace(match[0], "").trim().length <= 2 ? normalizePhone(match[0]) : undefined;
+}
+
+/** A single person's page (LINE profile, WhatsApp "Contact info"…), not a list. */
+export function looksLikeProfilePage(ocrText: string): boolean {
+  return normalizeText(ocrText)
+    .split("\n")
+    .some((line) => {
+      const l = line.trim();
+      return PROFILE_MARKER_RE.test(l) || WHATSAPP_MARKER_RE.test(l) || CONTACT_PAGE_RE.test(l);
+    });
+}
 
 /** True when OCR text came from a LINE contact card / profile page screenshot. */
 export function looksLikeLineProfile(ocrText: string): boolean {
@@ -227,10 +262,10 @@ export function looksLikeLineProfile(ocrText: string): boolean {
  * "Alex黃天倫*達興實業" → name "Alex 黃天倫", tag "達興實業";
  * "王小明-台積電" → name "王小明", company "台積電".
  */
-export function parseLineDisplayName(raw: string): ContactDraft {
+export function parseLineDisplayName(raw: string, app: "LINE" | "WhatsApp" = "LINE"): ContactDraft {
   const displayName = normalizeText(raw).replace(DECORATION_RE, "").trim();
   if (!displayName) return {};
-  const draft: ContactDraft = { line_display_name: displayName };
+  const draft: ContactDraft = app === "LINE" ? { line_display_name: displayName } : {};
 
   // "@" or an inner "*" separates the name from a group/title note.
   const [beforeAt, ...afterAt] = displayName.split(/[@*]/);
@@ -252,7 +287,8 @@ export function parseLineDisplayName(raw: string): ContactDraft {
     else if (!draft.title && findTitle(t)) draft.title = findTitle(t);
   }
   const otherTags = tags.filter((t) => t !== draft.company && !(draft.title && t.includes(draft.title)));
-  if (otherTags.length > 0) draft.notes = `LINE 名稱標註：${otherTags.join("、")}`;
+  if (app !== "LINE" && displayName !== namePart) draft.notes = `${app} 名稱：${displayName}`;
+  else if (otherTags.length > 0) draft.notes = `LINE 名稱標註：${otherTags.join("、")}`;
 
   // "Kenny吳副" → "Kenny 吳副": readable spacing between Latin and CJK.
   draft.name = namePart
@@ -263,18 +299,43 @@ export function parseLineDisplayName(raw: string): ContactDraft {
   return draft;
 }
 
-/** OCR output from a business card, a LINE contact card, or a profile screenshot. */
-export function extractFromOcr(ocrText: string): ContactDraft {
-  const lines = normalizeText(ocrText)
+export interface ScreenshotDraft {
+  draft: ContactDraft;
+  /** False when the name is a guess — the bot then asks before creating. */
+  sure: boolean;
+}
+
+/** OCR output from a business card, a LINE / WhatsApp profile, or a contact card. */
+export function extractFromScreenshot(ocrText: string): ScreenshotDraft {
+  const all = normalizeText(ocrText)
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line && !SCREEN_NOISE_RE.test(line));
+    .filter(Boolean);
+  const lines = all.filter((line) => !SCREEN_NOISE_RE.test(line) && !APP_UI_RE.test(line));
 
-  if (looksLikeLineProfile(ocrText) && lines.length > 0) {
+  // WhatsApp-style contact page: the name sits right above the phone number.
+  const isWhatsApp = all.some((line) => WHATSAPP_MARKER_RE.test(line));
+  if (isWhatsApp || all.some((line) => CONTACT_PAGE_RE.test(line))) {
+    const phoneAt = lines.findIndex((line) => wholePhone(line));
+    const nameLine =
+      phoneAt > 0 ? lines.slice(0, phoneAt).reverse().find(isPlausibleName) : lines.find(isPlausibleName);
+    if (nameLine) {
+      const draft = parseLineDisplayName(nameLine, isWhatsApp ? "WhatsApp" : "LINE");
+      if (!isWhatsApp) delete draft.line_display_name;
+      if (phoneAt >= 0) {
+        draft.phone = wholePhone(lines[phoneAt]);
+        if (isWhatsApp) draft.whatsapp_phone = draft.phone;
+      }
+      return { draft, sure: phoneAt > 0 };
+    }
+  }
+
+  const named = lines.filter(isPlausibleName);
+  if (looksLikeLineProfile(ocrText) && named.length > 0) {
     // LINE profile / shared contact card: the display name comes first, then
     // (on a profile page) the status message, which often has company/title.
-    const draft = parseLineDisplayName(lines[0]);
-    const rest = lines.slice(1).join("\n");
+    const draft = parseLineDisplayName(named[0]);
+    const rest = lines.slice(lines.indexOf(named[0]) + 1).join("\n");
     if (rest) {
       const { draft: more, leftover } = extractContactFields(rest);
       for (const [key, value] of Object.entries(more)) {
@@ -283,14 +344,18 @@ export function extractFromOcr(ocrText: string): ContactDraft {
       const status = [more.name, ...leftover].filter(Boolean).join(" ");
       if (status) draft.notes = [draft.notes, `狀態消息：${status}`].filter(Boolean).join("\n").slice(0, 500);
     }
-    return draft;
+    return { draft, sure: true };
   }
 
   const { draft, leftover } = extractContactFields(lines.join("\n"));
+  // A card-like name pattern is trusted only next to real contact details.
+  const sure = Boolean(draft.name && (draft.phone || draft.email || draft.company || draft.title || draft.line_id));
   // On a card the name is usually the shortest CJK line near the top; if the
-  // strict pattern didn't hit, fall back to the first short line.
+  // strict pattern didn't hit, fall back to the first short line (a guess).
   if (!draft.name) {
-    const candidate = leftover.find((s) => s.length >= 2 && s.length <= 6 && !/\d/.test(s) && !ADDRESS_RE.test(s));
+    const candidate = leftover.find(
+      (s) => s.length >= 2 && s.length <= 12 && !/\d/.test(s) && !ADDRESS_RE.test(s) && isPlausibleName(s),
+    );
     if (candidate) {
       draft.name = candidate;
       leftover.splice(leftover.indexOf(candidate), 1);
@@ -298,5 +363,9 @@ export function extractFromOcr(ocrText: string): ContactDraft {
   }
   const noise = leftover.filter((s) => s.length > 1);
   if (noise.length > 0) draft.notes = `名片/截圖其他文字：${noise.join(" / ")}`.slice(0, 500);
-  return draft;
+  return { draft, sure };
+}
+
+export function extractFromOcr(ocrText: string): ContactDraft {
+  return extractFromScreenshot(ocrText).draft;
 }

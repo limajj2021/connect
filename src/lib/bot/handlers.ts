@@ -548,8 +548,10 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
  * in case OCR misread it. Falls back to the confirmation card when the
  * name is unknown or someone with that name / LINE name already exists.
  */
-export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft): Promise<LineMessage[]> {
+export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft, sure = true): Promise<LineMessage[]> {
   if (!draft.name) return proposeDraft(ctx, draft, "從圖片辨識（請補名字）");
+  // The name was a guess: show what was read and let the owner confirm or fix it.
+  if (!sure) return proposeDraft(ctx, draft, "從圖片辨識，名字對嗎？");
   // Exact name / LINE-name matches, plus existing contacts whose name appears
   // inside the display name ("Kenny" ⊂ "Kenny吳副 @印度班加").
   const mentioned = await contactsMentionedIn(ctx, `${draft.line_display_name ?? ""} ${draft.name}`);
@@ -574,7 +576,11 @@ export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft): Pr
   const notice = noticeCard(
     `已建立 ${contact.name}`,
     `✅ 已從截圖建立「${contact.name}」`,
-    contact.line_display_name ? `LINE 名稱：${contact.line_display_name}` : undefined,
+    contact.line_display_name
+      ? `LINE 名稱：${contact.line_display_name}`
+      : contact.whatsapp_phone || contact.phone
+        ? `電話：${contact.whatsapp_phone ?? contact.phone}`
+        : undefined,
     [
       (isLinkSigningConfigured() ? uri("✏️ 補齊／修正資料", contactFormUrl(contact.id)) : null) ??
         postback("✏️ 補齊資料", { a: "fill", id: contact.id }),

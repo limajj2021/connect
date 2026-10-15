@@ -12,7 +12,7 @@ import { type ImageSet, receiveShot } from "./batch-chat";
 import { importChatArchive, importChatFile } from "./chat-files";
 import { detectContactList } from "./contact-list";
 import { type BotCtx, loadSession } from "./data";
-import { extractFromOcr, parseLineDisplayName } from "./extract";
+import { extractFromScreenshot, looksLikeProfilePage, parseLineDisplayName } from "./extract";
 import { appendToCollect } from "./forward";
 import { type FlowState, createFromScreenshot, handlePostback, handleText } from "./handlers";
 import { parseIntent } from "./intent";
@@ -48,16 +48,16 @@ async function handleImage(ctx: BotCtx, messageId: string, imageSet?: ImageSet):
   }
 
   // A chat list / friend list screenshot: everyone in it, in one go.
-  const list = detectContactList(ocr.lines);
-  if (list) return receiveShot(ctx, messageId, list.names.map(parseLineDisplayName), set);
+  const list = looksLikeProfilePage(ocr.text) ? null : detectContactList(ocr.lines);
+  if (list) return receiveShot(ctx, messageId, list.names.map((name) => parseLineDisplayName(name)), set);
 
-  const draft = extractFromOcr(ocr.text);
+  const { draft, sure } = extractFromScreenshot(ocr.text);
   if (set) return receiveShot(ctx, messageId, draft.name ? [draft] : [], set);
   const found = Object.keys(draft).filter((k) => k !== "notes").length;
   if (found === 0) {
     return [text(`我讀到這些字，但認不出聯絡資料：\n${ocr.text.slice(0, 300)}\n\n可以告訴我這是誰嗎？例如：新增 王小明 …`, MAIN_QUICK)];
   }
-  return createFromScreenshot(ctx, draft);
+  return createFromScreenshot(ctx, draft, sure);
 }
 
 /** Messages LINE can deliver but the bot can't read (stickers, voice, shared contacts…). */

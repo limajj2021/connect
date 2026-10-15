@@ -67,3 +67,14 @@ describe("detectContactList", () => {
     expect(detectContactList(lines)).toBeNull();
   });
 });
+
+describe("detectContactList noise", () => {
+  it("ignores the chat input placeholder and status-bar junk", () => {
+    const rows = ["王大明*", "李小華", "Leo Chang"].flatMap((name, i) => [
+      line(name, 563, 600 + i * 130, 34),
+      line(`${9 + i}/25`, 1100, 600 + i * 130, 19),
+    ]);
+    const result = detectContactList([...rows, line("Aa", 563, 1100, 34), line("٠١١١١٠", 563, 1230, 34)]);
+    expect(result?.names).toEqual(["王大明*", "李小華", "Leo Chang"]);
+  });
+});

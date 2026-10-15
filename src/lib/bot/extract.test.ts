@@ -117,3 +117,49 @@ describe("parseLineDisplayName with an inner *", () => {
     expect(draft.company).toBe("達興實業");
   });
 });
+
+describe("extractFromScreenshot", () => {
+  it("reads a WhatsApp contact page: the name is the line above the number", async () => {
+    const { extractFromScreenshot } = await import("./extract");
+    const text = [
+      "11:35",
+      "ıııl·",
+      "Contact info",
+      "Edit",
+      "Ravi Kumar @阿明 同事",
+      "+91 6300 111 222",
+      "Voice",
+      "Video",
+      "Search",
+      "Media, links and docs",
+      "Manage storage 517 KB >",
+      "Disappearing messages Off >",
+    ].join("\n");
+    const { draft, sure } = extractFromScreenshot(text);
+    expect(sure).toBe(true);
+    expect(draft.name).toBe("Ravi Kumar");
+    expect(draft.phone).toBe("+916300111222");
+    expect(draft.whatsapp_phone).toBe("+916300111222");
+    expect(draft.line_display_name).toBeUndefined();
+    expect(draft.notes).toBe("WhatsApp 名稱：Ravi Kumar @阿明 同事");
+  });
+
+  it("never takes status-bar icons as the name, and flags a guessed name", async () => {
+    const { extractFromScreenshot, isPlausibleName } = await import("./extract");
+    expect(isPlausibleName("ıııl·")).toBe(false);
+    expect(isPlausibleName("٠١١١١٠")).toBe(false);
+    expect(isPlausibleName("\\\\\\·")).toBe(false);
+    expect(isPlausibleName("王小明")).toBe(true);
+    expect(isPlausibleName("Leo")).toBe(true);
+
+    const guess = extractFromScreenshot("ıııl·\n\\\\\\·\n小明哥\n生活愉快每一天");
+    expect(guess.draft.name).toBe("小明哥");
+    expect(guess.sure).toBe(false);
+  });
+
+  it("knows a profile page is not a list", async () => {
+    const { looksLikeProfilePage } = await import("./extract");
+    expect(looksLikeProfilePage("Contact info\nRavi\n+91 6300 111 222\nLock chat")).toBe(true);
+    expect(looksLikeProfilePage("Chats\n王小明\nYesterday\n陳美玲\n10/2")).toBe(false);
+  });
+});

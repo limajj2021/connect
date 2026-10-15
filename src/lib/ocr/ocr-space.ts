@@ -52,14 +52,11 @@ function toLines(overlay: OverlayLine[]): OcrLine[] {
     }));
 }
 
-export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
-  const apiKey = process.env.OCR_SPACE_API_KEY;
-  if (!apiKey) return { ok: false, error: "尚未設定 OCR_SPACE_API_KEY" };
-
-  const { data, mime } = await fitImage(image);
+/** One OCR.space call. Engine 3 reads mixed Chinese/English best; 2 is faster. */
+async function recognize(apiKey: string, image: { data: Buffer; mime: string }, engine: "2" | "3", timeoutMs: number): Promise<OcrResult> {
   const form = new FormData();
-  form.set("base64Image", `data:${mime};base64,${data.toString("base64")}`);
-  form.set("OCREngine", "2"); // Engine 2 reads Traditional Chinese with language auto-detect.
+  form.set("base64Image", `data:${image.mime};base64,${image.data.toString("base64")}`);
+  form.set("OCREngine", engine);
   form.set("language", "auto");
   form.set("scale", "true");
   form.set("detectOrientation", "true");
@@ -70,7 +67,7 @@ export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
       method: "POST",
       headers: { apikey: apiKey },
       body: form,
-      signal: AbortSignal.timeout(40_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false, error: `OCR 服務回應 ${res.status}` };
     const json = (await res.json()) as {
@@ -88,4 +85,15 @@ export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.name === "TimeoutError" ? "OCR 逾時" : "OCR 服務連線失敗" };
   }
+}
+
+export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
+  const apiKey = process.env.OCR_SPACE_API_KEY;
+  if (!apiKey) return { ok: false, error: "尚未設定 OCR_SPACE_API_KEY" };
+
+  const fitted = await fitImage(image);
+  const best = await recognize(apiKey, fitted, "3", 25_000);
+  if (best.ok) return best;
+  console.warn("[ocr] engine 3 failed, falling back to engine 2:", best.error);
+  return recognize(apiKey, fitted, "2", 20_000);
 }
