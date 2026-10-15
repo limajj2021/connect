@@ -3,7 +3,7 @@
  * One-off setup for the LINE OA bot (idempotent — safe to re-run):
  *   1. points the channel's webhook at <APP_BASE_URL>/api/line/webhook and tests it
  *   2. (re)creates the two-tab rich menu (主選單 / 工具箱) from
- *      scripts/line/rich-menu-{main,tools}.png, links the tabs with rich menu
+ *      public/line/rich-menu-{main,tools}.png, links the tabs with rich menu
  *      aliases, and makes 主選單 the default for everyone
  *
  * Re-render the art after changing rich-menu-layout.mjs:
@@ -15,7 +15,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { LAYOUT, MENU_H, MENU_W, TABS } from "./rich-menu-layout.mjs";
+import { LAYOUT, MENU_H, MENU_W, TABS } from "../../src/lib/line/rich-menu-layout.mjs";
 
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, "");
@@ -49,7 +49,8 @@ console.log("webhook:", endpoint, "test:", test.success ? "OK" : test);
 
 // 2. Rich menu: two tabs (主選單 / 工具箱), switched by tapping the tab bar
 // (a "richmenuswitch" action between two rich menu aliases). Layout and art
-// come from rich-menu-layout.mjs / render-rich-menu.mjs.
+// come from src/lib/line/rich-menu-layout.mjs / render-rich-menu.mjs. The app
+// can do the same from the phone (LIFF 設定 → 更新圖文選單, src/lib/line/rich-menu.ts).
 const cmd = (c, label) => ({ type: "postback", label, data: `a=cmd&c=${c}`, displayText: label });
 
 function toAction(a) {
@@ -77,7 +78,7 @@ for (const tab of TABS) {
     chatBarText: "選單",
     areas: [...tabAreas, ...tab.cells.map((cell) => ({ bounds: cell.bounds, action: toAction(cell.action) }))],
   });
-  const image = await readFile(fileURLToPath(new URL(`./rich-menu-${tab.key}.png`, import.meta.url)));
+  const image = await readFile(fileURLToPath(new URL(`../../public/line/rich-menu-${tab.key}.png`, import.meta.url)));
   await line("POST", `${DATA_API}/v2/bot/richmenu/${richMenuId}/content`, image, "image/png");
   ids[tab.key] = richMenuId;
 

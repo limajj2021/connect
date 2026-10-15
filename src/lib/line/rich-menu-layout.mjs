@@ -1,6 +1,7 @@
 /**
- * The two rich-menu tabs, shared by render-rich-menu.mjs (the art) and
- * setup-line.mjs (the tap areas) so they can never drift apart.
+ * The two rich-menu tabs, shared by scripts/line/render-rich-menu.mjs (the
+ * art), scripts/line/setup-line.mjs and src/lib/line/rich-menu.ts (the tap
+ * areas) so they can never drift apart.
  *
  * 2500×1686 (LINE's full-height size). Top: a tab bar to switch between
  * 主選單 (what you do daily) and 工具箱 (settings & occasional tools).

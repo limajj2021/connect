@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Renders the two rich-menu tabs (主選單 / 工具箱) to PNG with headless
- * Chromium, so the menu art always matches the tap areas in setup-line.mjs.
+ * Chromium into public/line/, so the menu art always matches the tap areas
+ * (both come from src/lib/line/rich-menu-layout.mjs).
  *
  *   node scripts/line/render-rich-menu.mjs
  *
@@ -12,7 +13,7 @@
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { LAYOUT, MENU_H, MENU_W, TABS } from "./rich-menu-layout.mjs";
+import { LAYOUT, MENU_H, MENU_W, TABS } from "../../src/lib/line/rich-menu-layout.mjs";
 
 async function loadPlaywright() {
   try {
@@ -89,7 +90,7 @@ for (const tab of TABS) {
   // Web font when reachable; otherwise the local CJK font in the stack.
   await page.setContent(html, { waitUntil: "networkidle", timeout: 15_000 }).catch(() => page.setContent(html));
   await page.evaluate(() => document.fonts.ready);
-  const out = fileURLToPath(new URL(`./rich-menu-${tab.key}.png`, import.meta.url));
+  const out = fileURLToPath(new URL(`../../public/line/rich-menu-${tab.key}.png`, import.meta.url));
   await writeFile(out, await page.screenshot({ type: "png" }));
   console.log("wrote", out);
 }

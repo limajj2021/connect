@@ -138,7 +138,7 @@
 - 主選單：今日（大格）、人脈、提醒、久沒聯絡、找人、轉傳紀錄、記動態
 - 工具箱：節日（大格）、設定、節慶開關、標籤管理、重要人脈、網頁後台
 
-改版面時編輯 `scripts/line/rich-menu-layout.mjs`（圖與點擊區域共用同一份），`node scripts/line/render-rich-menu.mjs`
+改版面時編輯 `src/lib/line/rich-menu-layout.mjs`（圖與點擊區域共用同一份），`node scripts/line/render-rich-menu.mjs`
 重畫圖，再跑 `setup-line.mjs` 上傳。
 
 **每天 09:00（台北）主動推播**：3 天內生日（每人一張祝福卡）、到期的節日問候（一張群發卡＋

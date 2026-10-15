@@ -2,6 +2,7 @@ import { CalendarHeart, PartyPopper, Tag } from "lucide-react";
 import Link from "next/link";
 
 import { SheetHeader } from "../sheet-ui";
+import { SystemPanel } from "./system-panel";
 
 const ITEMS = [
   { href: "/m/occasions", icon: PartyPopper, title: "節日提醒", desc: "自己加節日、改日期、提前幾天提醒、開關" },
@@ -29,6 +30,9 @@ export default function MiniSettingsPage() {
           </li>
         ))}
       </ul>
+      <div className="mt-4">
+        <SystemPanel />
+      </div>
     </div>
   );
 }
