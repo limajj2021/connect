@@ -66,7 +66,7 @@ export function TagsInput({
           onKeyDown={handleKeyDown}
           onBlur={() => addTag(draft)}
           placeholder={value.length === 0 ? placeholder : undefined}
-          className="min-w-24 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          className="min-w-24 flex-1 border-0 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm"
         />
       </div>
       {filteredSuggestions.length > 0 ? (

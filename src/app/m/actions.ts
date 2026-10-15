@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { parseContactFormData } from "@/lib/contacts/form";
+import { setContactTags } from "@/lib/mini/tags";
 import { verifyScope } from "@/lib/mini/token";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
 
@@ -68,6 +69,7 @@ export async function saveMiniContact(token: string, contactId: string | null, _
       .select("name")
       .maybeSingle();
     if (error || !data) return { error: "儲存失敗，請稍後再試" };
+    await setContactTags(supabase, ownerId, contactId, parsed.data.industries);
     refreshWeb(contactId);
     return { ok: true, name: data.name as string };
   }
@@ -77,6 +79,7 @@ export async function saveMiniContact(token: string, contactId: string | null, _
     .select("id, name")
     .single();
   if (error) return { error: "新增失敗，請稍後再試" };
+  await setContactTags(supabase, ownerId, data.id as string, parsed.data.industries);
   refreshWeb(data.id as string);
   return { ok: true, name: data.name as string };
 }

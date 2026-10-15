@@ -7,14 +7,19 @@ import { Button } from "@/components/ui/button";
 import { backToChatUrl, closeMiniApp } from "@/lib/mini/liff-client";
 
 /** Success screen: closes the LIFF sheet automatically when inside LINE. */
-export function MiniDone({ message }: { message: string }) {
+export function MiniDone({ message, returnTo }: { message: string; returnTo?: string }) {
   const [closing, setClosing] = useState(true);
 
   useEffect(() => {
+    // Opened from the contact list: go back to it; otherwise close the sheet.
+    if (returnTo) {
+      const timer = setTimeout(() => window.location.replace(returnTo), 700);
+      return () => clearTimeout(timer);
+    }
     void closeMiniApp().then((closed) => {
       if (!closed) setClosing(false);
     });
-  }, []);
+  }, [returnTo]);
 
   const back = backToChatUrl();
   return (

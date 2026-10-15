@@ -6,7 +6,7 @@
  *      makes it the default for everyone who adds the account
  *
  * Usage:
- *   LINE_CHANNEL_ACCESS_TOKEN=... APP_BASE_URL=https://your-app.vercel.app node scripts/line/setup-line.mjs
+ *   LINE_CHANNEL_ACCESS_TOKEN=... APP_BASE_URL=https://your-app.vercel.app [NEXT_PUBLIC_LIFF_ID=...] node scripts/line/setup-line.mjs
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ if (!token || !baseUrl) {
 const API = "https://api.line.me";
 const DATA_API = "https://api-data.line.me";
 const MENU_NAME = "personal-crm-main";
+const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
 async function line(method, url, body, contentType = "application/json") {
   const res = await fetch(url, {
@@ -58,7 +59,11 @@ const { richMenuId } = await line("POST", `${API}/v2/bot/richmenu`, {
   areas: [
     { bounds: cell(0, 0), action: cmd("today", "今日") },
     { bounds: cell(1, 0), action: cmd("add", "新增人脈") },
-    { bounds: cell(2, 0), action: cmd("search", "找人") },
+    // 人脈 opens the LIFF contact list when a LIFF app is configured.
+    {
+      bounds: cell(2, 0),
+      action: liffId ? { type: "uri", label: "人脈", uri: `https://liff.line.me/${liffId}/contacts` } : cmd("search", "找人"),
+    },
     { bounds: cell(0, 1), action: cmd("tasks", "待辦") },
     { bounds: cell(1, 1), action: cmd("reminders", "提醒") },
     { bounds: cell(2, 1), action: cmd("help", "說明") },

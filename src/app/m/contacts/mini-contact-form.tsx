@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { TagsInput } from "@/components/tags-input";
 import type { ContactRow } from "@/types/database";
 
 import { type MiniState, deleteMiniContact, saveMiniContact } from "../actions";
@@ -48,7 +49,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * The whole contact on one screen: fill or fix every field at once instead of
  * answering the bot one question at a time.
  */
-export function MiniContactForm({ token, contact, prefillName }: { token: string; contact: ContactRow | null; prefillName?: string }) {
+export function MiniContactForm({
+  token,
+  contact,
+  prefillName,
+  tags: initialTags,
+  tagSuggestions,
+  returnTo,
+}: {
+  token: string;
+  contact: ContactRow | null;
+  prefillName?: string;
+  tags: string[];
+  tagSuggestions: string[];
+  returnTo?: string;
+}) {
+  const [tags, setTags] = useState<string[]>(initialTags);
   const [state, formAction, isPending] = useActionState<MiniState, FormData>(
     saveMiniContact.bind(null, token, contact?.id ?? null),
     {},
@@ -63,7 +79,12 @@ export function MiniContactForm({ token, contact, prefillName }: { token: string
   }, [state]);
 
   if (state.ok || deleted?.ok) {
-    return <MiniDone message={deleted?.ok ? "已刪除這位人脈" : contact ? `已儲存「${state.name}」` : `已新增「${state.name}」`} />;
+    return (
+      <MiniDone
+        message={deleted?.ok ? "已刪除這位人脈" : contact ? `已儲存「${state.name}」` : `已新增「${state.name}」`}
+        returnTo={returnTo}
+      />
+    );
   }
 
   return (
@@ -100,6 +121,10 @@ export function MiniContactForm({ token, contact, prefillName }: { token: string
               </Button>
             ))}
           </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>標籤</Label>
+          <TagsInput name="industries" value={tags} onChange={setTags} suggestions={tagSuggestions} placeholder="例如：半導體、扶輪社、客戶" />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox name="is_important" defaultChecked={contact?.is_important ?? false} />
