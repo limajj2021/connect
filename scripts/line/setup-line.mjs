@@ -40,11 +40,13 @@ await line("PUT", `${API}/v2/bot/channel/webhook/endpoint`, { endpoint });
 const test = await line("POST", `${API}/v2/bot/channel/webhook/test`, { endpoint });
 console.log("webhook:", endpoint, "test:", test.success ? "OK" : test);
 
-// 2. Rich menu: 2500x843, two rows of two (only what's actually used day to
-// day — 新增人脈/待辦/說明 are one typed word away and don't need a button).
+// 2. Rich menu: 2500x843, 3 cells on top (even thirds), 2 wider cells on the
+// bottom (only what's actually used day to day — 新增人脈/待辦/說明 are one
+// typed word away and don't need a button).
 const W = 2500;
 const H = 843;
-const cell = (col, row) => ({ x: Math.round((W / 2) * col), y: Math.round((H / 2) * row), width: Math.round(W / 2), height: Math.round(H / 2) });
+const top = (col) => ({ x: Math.round((W / 3) * col), y: 0, width: Math.round(W / 3), height: Math.round(H / 2) });
+const bottom = (col) => ({ x: Math.round((W / 2) * col), y: Math.round(H / 2), width: Math.round(W / 2), height: Math.round(H / 2) });
 const cmd = (c, label) => ({ type: "postback", label, data: `a=cmd&c=${c}`, displayText: label });
 const liff = (path, label) => (liffId ? { type: "uri", label, uri: `https://liff.line.me/${liffId}${path}` } : cmd("search", label));
 
@@ -59,11 +61,12 @@ const { richMenuId } = await line("POST", `${API}/v2/bot/richmenu`, {
   name: MENU_NAME,
   chatBarText: "選單",
   areas: [
-    { bounds: cell(0, 0), action: cmd("today", "今日") },
-    // 人脈／節日 open LIFF pages when a LIFF app is configured, otherwise fall back to 找人.
-    { bounds: cell(1, 0), action: liff("/contacts", "人脈") },
-    { bounds: cell(0, 1), action: cmd("reminders", "提醒") },
-    { bounds: cell(1, 1), action: liff("/occasions", "節日") },
+    { bounds: top(0), action: cmd("today", "今日") },
+    // 人脈／節日／設定 open LIFF pages when a LIFF app is configured, otherwise fall back to 找人.
+    { bounds: top(1), action: liff("/contacts", "人脈") },
+    { bounds: top(2), action: cmd("reminders", "提醒") },
+    { bounds: bottom(0), action: liff("/occasions", "節日") },
+    { bounds: bottom(1), action: liff("/settings", "設定") },
   ],
 });
 const image = await readFile(fileURLToPath(new URL("./rich-menu.png", import.meta.url)));
