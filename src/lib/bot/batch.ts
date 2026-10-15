@@ -126,10 +126,20 @@ export async function createBatch(ctx: BatchCtx, drafts: ContactDraft[], tags: s
     .from("contacts")
     .insert(
       drafts.map((d) => {
-        const row: Record<string, unknown> = { owner_id: ctx.ownerId, met_channel: "LINE 截圖" };
+        // A bulk insert gives every row the union of all keys and fills the
+        // missing ones with NULL (not the column default), so the NOT NULL
+        // columns must be present on every row.
+        const row: Record<string, unknown> = {
+          owner_id: ctx.ownerId,
+          met_channel: "LINE 截圖",
+          role_type: "unclassified",
+          is_important: false,
+          festival_reminder_enabled: true,
+        };
         for (const [k, v] of Object.entries(d)) if (v !== undefined && v !== "") row[k] = v;
         return row;
       }),
+      { defaultToNull: false },
     )
     .select("id, name");
   if (error) throw error;

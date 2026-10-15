@@ -78,3 +78,14 @@ describe("detectContactList noise", () => {
     expect(result?.names).toEqual(["王大明*", "李小華", "Leo Chang"]);
   });
 });
+
+describe("detectContactList status lines", () => {
+  it("does not take a search-result header as a person", () => {
+    const rows = ["王大明", "李小華", "Leo Chang"].flatMap((name, i) => [
+      line(name, 563, 600 + i * 130, 34),
+      line(`${9 + i}/25`, 1100, 600 + i * 130, 19),
+    ]);
+    const result = detectContactList([...rows, line("1 message found.", 563, 1100, 34), line("找到 3 則訊息", 563, 1230, 34)]);
+    expect(result?.names).toEqual(["王大明", "李小華", "Leo Chang"]);
+  });
+});

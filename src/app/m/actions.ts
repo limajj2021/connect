@@ -138,8 +138,13 @@ export async function saveMiniBatch(token: string, _prev: MiniState, formData: F
   if (drafts.some((d) => !d.name)) return { error: "每位都需要名字" };
 
   const tags = formData.getAll("industries").map(String);
-  const created = await createBatch(ctx, drafts, tags);
-  await clearShots(ctx);
-  refreshWeb();
-  return { ok: true, name: String(created.length) };
+  try {
+    const created = await createBatch(ctx, drafts, tags);
+    await clearShots(ctx);
+    refreshWeb();
+    return { ok: true, name: String(created.length) };
+  } catch (error) {
+    console.error("[mini-batch] save failed", error);
+    return { error: "儲存失敗，請稍後再試（這批名單還在，不會遺失）" };
+  }
 }
