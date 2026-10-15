@@ -216,7 +216,18 @@ export interface ContactLinks {
   task: string;
 }
 
-export function contactBubble(contact: ContactForCard, links?: ContactLinks) {
+export interface LastTouch {
+  occurred_on: string;
+  content: string;
+}
+
+/** "10/15：他兒子下個月要考學測" — short-dated so it reads at a glance on a card. */
+function touchLine(touch: LastTouch): string {
+  const [, month, day] = touch.occurred_on.split("-");
+  return `${Number(month)}/${Number(day)}：${touch.content.replace(/[\r\n]+/g, " ").slice(0, 60)}`;
+}
+
+export function contactBubble(contact: ContactForCard, links?: ContactLinks, lastTouch?: LastTouch) {
   const lines: [string, string | null][] = [
     ["公司", contact.company],
     ["職稱", contact.title],
@@ -230,6 +241,7 @@ export function contactBubble(contact: ContactForCard, links?: ContactLinks) {
     ["備註", contact.notes ? contact.notes.slice(0, 80) : null],
   ];
   const body = lines.filter(([, v]) => v).map(([k, v]) => row(k, v!));
+  if (lastTouch) body.unshift(t(`💬 上次聊到（${touchLine(lastTouch)}）`, { size: "xs", color: "#2f5d50", wrap: true }) as never);
   const missing = missingFields(contact);
   if (missing.length > 0) {
     body.push(t(`還缺：${missing.map((f) => FIELD_LABELS[f]).join("、")}`, { size: "xs", color: "#b26a00" }) as never);
@@ -253,10 +265,16 @@ export function contactCards(
   contacts: ContactForCard[],
   intro?: string,
   linksFor?: (contact: ContactForCard) => ContactLinks | undefined,
+  lastTouches?: Map<string, LastTouch>,
 ): LineMessage[] {
   const messages: LineMessage[] = [];
   if (intro) messages.push(text(intro));
-  messages.push(carousel(contacts.map((c) => c.name).join("、"), contacts.slice(0, 10).map((c) => contactBubble(c, linksFor?.(c)))));
+  messages.push(
+    carousel(
+      contacts.map((c) => c.name).join("、"),
+      contacts.slice(0, 10).map((c) => contactBubble(c, linksFor?.(c), lastTouches?.get(c.id))),
+    ),
+  );
   return messages;
 }
 
@@ -396,7 +414,9 @@ export function helpMessages(): LineMessage[] {
         "🔍 找 王小明（或直接打名字）",
         "📝 待辦 寄報價給王小明 明天",
         "🤝 會議 王小明 今天談合作，下週回覆報價",
-        "🗒 備註 王小明 喜歡喝咖啡",
+        "🗒 備註 王小明 喜歡喝咖啡（長期不變的事）",
+        "💬 交流 王小明 聊到他兒子要考學測（每次聊了什麼，卡片會提醒你上次聊到哪）",
+        "📜 歷史 王小明（看完整交流紀錄）",
         "🎂 生日／提醒／待辦／今日",
         "",
         "💬 到好友聊天室長按訊息 →「轉傳」給我（可多選）→ 選是誰 → 存成他的聊天紀錄並補上電話、Email",

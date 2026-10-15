@@ -43,6 +43,15 @@ export interface ContactRow {
   updated_at: string;
 }
 
+export interface ContactInteractionRow {
+  id: string;
+  owner_id: string;
+  contact_id: string;
+  occurred_on: string;
+  content: string;
+  created_at: string;
+}
+
 export interface IndustryRow {
   id: string;
   owner_id: string;
@@ -173,6 +182,11 @@ export interface Database {
         Row: { contact_id: string; industry_id: string };
         Insert: { contact_id: string; industry_id: string };
         Update: { contact_id?: string; industry_id?: string };
+      } & NoRelationships;
+      contact_interactions: {
+        Row: ContactInteractionRow;
+        Insert: Partial<ContactInteractionRow> & { contact_id: string; occurred_on: string; content: string };
+        Update: Partial<ContactInteractionRow>;
       } & NoRelationships;
       meetings: {
         Row: MeetingRow;

@@ -1,3 +1,4 @@
+import { listInteractions } from "@/lib/bot/data";
 import { verifyScope } from "@/lib/mini/token";
 import { contactTagNames, listTagNames } from "@/lib/mini/tags";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
@@ -16,12 +17,17 @@ export default async function MiniEditContactPage(props: PageProps<"/m/contacts/
   const ownerId = await getOwnerUserId();
   const { data } = await supabase.from("contacts").select("*").eq("owner_id", ownerId).eq("id", id).maybeSingle();
   if (!data) return <p className="p-6 text-center text-sm text-muted-foreground">這位人脈已被刪除。</p>;
-  const [tags, tagSuggestions] = await Promise.all([contactTagNames(supabase, id), listTagNames(supabase, ownerId)]);
+  const [tags, tagSuggestions, interactions] = await Promise.all([
+    contactTagNames(supabase, id),
+    listTagNames(supabase, ownerId),
+    listInteractions({ supabase, ownerId }, id),
+  ]);
 
   return (
     <MiniContactForm
       token={token!}
       contact={data as ContactRow}
+      interactions={interactions}
       tags={tags}
       tagSuggestions={tagSuggestions}
       returnTo={back === "list" ? "/m/contacts" : undefined}

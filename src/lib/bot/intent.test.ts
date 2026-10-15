@@ -18,6 +18,13 @@ describe("parseIntent", () => {
     ["生日", "birthdays"],
     ["會議 王小明 談合作", "meeting"],
     ["備註 王小明 喜歡咖啡", "note"],
+    ["交流 王小明 聊到他兒子考學測", "interaction"],
+    ["聊過 王小明 最近在忙新案子", "interaction"],
+    ["聯絡過 王小明 約了下週喝咖啡", "interaction"],
+    ["記錄 王小明 他換工作了", "interaction"],
+    ["紀錄 王小明 他換工作了", "interaction"],
+    ["歷史 王小明", "history"],
+    ["上次聊 王小明", "history"],
     ["產生提醒", "generate_reminders"],
     ["王小明", "unknown"],
   ])("%s → %s", (input, kind) => {
@@ -27,6 +34,17 @@ describe("parseIntent", () => {
   it("keeps the arguments", () => {
     expect(parseIntent("新增 王小明 0912345678")).toEqual({ kind: "add_contact", args: "王小明 0912345678" });
     expect(parseIntent("備註 王小明 喜歡 咖啡")).toEqual({ kind: "note", name: "王小明", text: "喜歡 咖啡" });
+    expect(parseIntent("交流 王小明 聊到他兒子考學測")).toEqual({
+      kind: "interaction",
+      name: "王小明",
+      text: "聊到他兒子考學測",
+    });
+    expect(parseIntent("歷史 王小明")).toEqual({ kind: "history", name: "王小明" });
+  });
+
+  it("會議/開會/見面/拜訪 still mean a formal meeting, not a quick log (記錄/紀錄 moved to 交流)", () => {
+    expect(parseIntent("見面 王小明 聊合作").kind).toBe("meeting");
+    expect(parseIntent("拜訪 王小明 聊合作").kind).toBe("meeting");
   });
 });
 

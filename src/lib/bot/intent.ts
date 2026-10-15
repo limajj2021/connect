@@ -13,6 +13,8 @@ export type Intent =
   | { kind: "birthdays" }
   | { kind: "meeting"; text: string }
   | { kind: "note"; name: string; text: string }
+  | { kind: "interaction"; name: string; text: string }
+  | { kind: "history"; name: string }
   | { kind: "generate_reminders" }
   | { kind: "web" }
   | { kind: "collect_start" }
@@ -30,8 +32,11 @@ const RULES: [RegExp, (m: RegExpMatchArray) => Intent][] = [
   [/^(?:待辦|todo|提醒我|記得|要做)\s+([\s\S]+)$/i, (m) => ({ kind: "add_task", text: m[1].trim() })],
   [/^(?:提醒|提醒清單|節日|節日提醒|所有提醒)$/, () => ({ kind: "list_reminders" })],
   [/^(?:生日|誰生日|近期生日|生日清單|壽星)$/, () => ({ kind: "birthdays" })],
-  [/^(?:會議|開會|紀錄|記錄|見面|拜訪)\s+([\s\S]+)$/, (m) => ({ kind: "meeting", text: m[1].trim() })],
+  [/^(?:會議|開會|見面|拜訪)\s+([\s\S]+)$/, (m) => ({ kind: "meeting", text: m[1].trim() })],
   [/^(?:備註|筆記|記下)\s+(\S+)\s+([\s\S]+)$/, (m) => ({ kind: "note", name: m[1], text: m[2].trim() })],
+  // A quick log of one touch ("還聊了什麼") — distinct from a formal 會議.
+  [/^(?:交流|聊過|聊了|聯絡過|互動|記錄|紀錄)\s+(\S+)\s+([\s\S]+)$/, (m) => ({ kind: "interaction", name: m[1], text: m[2].trim() })],
+  [/^(?:上次聊|上次交流|聊過什麼|歷史|互動紀錄|互動歷史)\s+(\S+)$/, (m) => ({ kind: "history", name: m[1] })],
   [/^(?:產生提醒|生成提醒|更新提醒)$/, () => ({ kind: "generate_reminders" })],
   [/^(?:網頁|後台|網頁版|匯出|匯入|設定|web)$/i, () => ({ kind: "web" })],
   [/^(?:轉傳|轉傳紀錄|轉傳訊息|存對話|收集)$/, () => ({ kind: "collect_start" })],

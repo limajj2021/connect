@@ -27,11 +27,14 @@ import {
   appendNote,
   contactsMentionedIn,
   createContact,
+  createInteraction,
   createMeeting,
   createTask,
   deleteContact,
   findContactByExactName,
   getContact,
+  lastTouchFor,
+  listInteractions,
   listPendingReminders,
   listPendingTasks,
   loadSession,
@@ -85,7 +88,7 @@ function editFormNotice(contact: Pick<ContactForCard, "id" | "name">): LineMessa
 async function createFromDraft(ctx: BotCtx, draft: ContactDraft): Promise<LineMessage[]> {
   const contact = await createContact(ctx, draft);
   await saveSession(ctx, null);
-  return [text(`✅ 已建立「${contact.name}」，缺的資料按「✏️ 補齊資料」一次填完：`), carousel(contact.name, [card(contact)], MAIN_QUICK)];
+  return [text(`✅ 已建立「${contact.name}」，缺的資料按「✏️ 補齊資料」一次填完：`), carousel(contact.name, [await card(ctx, contact)], MAIN_QUICK)];
 }
 
 async function startAddContact(ctx: BotCtx, args: string): Promise<LineMessage[]> {
@@ -108,7 +111,7 @@ async function startAddContact(ctx: BotCtx, args: string): Promise<LineMessage[]
     await saveSession(ctx, { flow: "draft", draft, source: "文字輸入" } satisfies FlowState);
     return [
       text(`已經有 ${duplicates.length} 位叫「${draft.name}」的人脈：`),
-      carousel(draft.name, duplicates.map(card)),
+      carousel(draft.name, await Promise.all(duplicates.map((c) => card(ctx, c)))),
       draftBubble(draft, "要另外再建一位嗎？"),
     ];
   }
@@ -124,7 +127,7 @@ async function showSearch(ctx: BotCtx, query: string): Promise<LineMessage[]> {
   if (contacts.length === 0) {
     return [text(`找不到「${query}」。`, [postback(`新增「${query.slice(0, 10)}」`, { a: "cmd", c: "add_named", n: query.slice(0, 50) }, `新增 ${query}`), ...MAIN_QUICK])];
   }
-  return cards(contacts, contacts.length > 1 ? `找到 ${contacts.length} 位：` : undefined);
+  return cards(ctx, contacts, contacts.length > 1 ? `找到 ${contacts.length} 位：` : undefined);
 }
 
 async function showTasks(ctx: BotCtx): Promise<LineMessage[]> {
@@ -232,9 +235,47 @@ async function addNote(ctx: BotCtx, name: string, note: string): Promise<LineMes
   return [text(`🗒 已記在 ${updated.name} 的備註。`, MAIN_QUICK)];
 }
 
+/**
+ * A quick log of one touch ("交流 王小明 聊到他兒子要考學測") — separate from
+ * `notes` (durable facts) and `meetings` (formal, possibly multi-contact).
+ * Shows the *previous* touch back, so logging one also surfaces the last one.
+ */
+async function logInteraction(ctx: BotCtx, name: string, input: string): Promise<LineMessage[]> {
+  const matches = await findContactByExactName(ctx, name);
+  const contact = matches[0] ?? (await searchContacts(ctx, name, 1))[0];
+  if (!contact) {
+    return [text(`找不到「${name}」，要先新增嗎？`, [postback(`新增「${name.slice(0, 10)}」`, { a: "cmd", c: "add_named", n: name.slice(0, 50) }, `新增 ${name}`)])];
+  }
+  const previous = await lastTouchFor(ctx, contact.id);
+  const { date, rest } = extractDueDate(input, ctx.today);
+  const occurredOn = date && date <= ctx.today ? date : ctx.today;
+  const content = rest || input;
+  await createInteraction(ctx, contact.id, content, occurredOn);
+  return [
+    text(
+      [`📝 已記錄跟 ${contact.name} 的交流（${formatShortDate(occurredOn)}）`, previous ? `💬 上次（${formatShortDate(previous.occurred_on)}）：${previous.content.slice(0, 80)}` : null]
+        .filter(Boolean)
+        .join("\n"),
+      MAIN_QUICK,
+    ),
+  ];
+}
+
+async function showHistory(ctx: BotCtx, name: string): Promise<LineMessage[]> {
+  const matches = await findContactByExactName(ctx, name);
+  const contact = matches[0] ?? (await searchContacts(ctx, name, 1))[0];
+  if (!contact) return [text(`找不到「${name}」。`, MAIN_QUICK)];
+  const history = await listInteractions(ctx, contact.id, 10);
+  if (history.length === 0) {
+    return [text(`還沒有跟 ${contact.name} 的交流紀錄。打「交流 ${contact.name} ...」開始記。`, MAIN_QUICK)];
+  }
+  const lines = history.map((h) => `${formatShortDate(h.occurred_on)}：${h.content.slice(0, 100)}`);
+  return [text(`${contact.name} 的交流紀錄（最近 ${history.length} 筆）：\n${lines.join("\n")}`, MAIN_QUICK)];
+}
+
 async function handleUnknown(ctx: BotCtx, input: string): Promise<LineMessage[]> {
   const exact = await findContactByExactName(ctx, input);
-  if (exact.length > 0) return cards(exact);
+  if (exact.length > 0) return cards(ctx, exact);
   // Anything else is most likely a message forwarded from a friend's chat (or
   // pasted details): park it and ask whose conversation it is.
   return appendToCollect(ctx, null, [input]);
@@ -258,7 +299,7 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
     case "list_contacts": {
       const { contacts, total } = await recentContacts(ctx, 10);
       if (total === 0) return [text("還沒有任何人脈，打「新增 名字」或傳名片截圖開始吧！", MAIN_QUICK)];
-      return cards(contacts, `共 ${total} 位人脈，最近新增的 ${contacts.length} 位：`);
+      return cards(ctx, contacts, `共 ${total} 位人脈，最近新增的 ${contacts.length} 位：`);
     }
     case "list_tasks":
       return showTasks(ctx);
@@ -272,6 +313,10 @@ async function runIntent(ctx: BotCtx, intent: Intent): Promise<LineMessage[]> {
       return logMeeting(ctx, intent.text);
     case "note":
       return addNote(ctx, intent.name, intent.text);
+    case "interaction":
+      return logInteraction(ctx, intent.name, intent.text);
+    case "history":
+      return showHistory(ctx, intent.name);
     case "generate_reminders": {
       const year = Number(ctx.today.slice(0, 4));
       const summary = await generateReminders([year, year + 1], { supabase: ctx.supabase, ownerId: ctx.ownerId });
@@ -383,7 +428,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       return [text("好，先這樣。", MAIN_QUICK)];
     case "contact": {
       const contact = await getContact(ctx, id);
-      return contact ? cards([contact]) : [text("找不到這位人脈。")];
+      return contact ? cards(ctx, [contact]) : [text("找不到這位人脈。")];
     }
     // Buttons on cards sent before the form existed ("補資料", "⋯ 更多", "改…").
     case "more":
@@ -520,7 +565,7 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       if (state.draft.notes) patch.notes = contact.notes ? `${contact.notes}\n${state.draft.notes}` : state.draft.notes;
       const updated = Object.keys(patch).length > 0 ? await updateContact(ctx, id, patch) : contact;
       await saveSession(ctx, null);
-      return [text(`✅ 已把截圖資料併入「${updated.name}」`), carousel(updated.name, [card(updated)], MAIN_QUICK)];
+      return [text(`✅ 已把截圖資料併入「${updated.name}」`), carousel(updated.name, [await card(ctx, updated)], MAIN_QUICK)];
     }
     case "collect_to":
     case "collect_new":
@@ -565,7 +610,7 @@ export async function createFromScreenshot(ctx: BotCtx, draft: ContactDraft, sur
     await saveSession(ctx, { flow: "draft", draft, source: "從圖片辨識" } satisfies FlowState);
     return [
       text(`截圖是「${draft.line_display_name ?? draft.name}」，是已經在人脈裡的這位嗎？`),
-      carousel(draft.name, unique.map(card), [
+      carousel(draft.name, await Promise.all(unique.map((c) => card(ctx, c))), [
         ...unique.map((c) => postback(`是 ${c.name}`.slice(0, 20), { a: "merge", id: c.id }, `是 ${c.name}，合併資料`)),
         postback("都不是，新增", { a: "draft_ok" }, "都不是，新增一位"),
       ]),

@@ -164,7 +164,7 @@ function fillableFrom(contact: ContactForCard | null, draft: ContactDraft) {
   return patch;
 }
 
-function summary(contact: ContactForCard, count: number, importId: string, patch: Record<string, unknown>, created: boolean) {
+async function summary(ctx: BotCtx, contact: ContactForCard, count: number, importId: string, patch: Record<string, unknown>, created: boolean) {
   const filled = Object.keys(patch)
     .map((k) => FILL_LABELS[k])
     .filter(Boolean);
@@ -178,7 +178,7 @@ function summary(contact: ContactForCard, count: number, importId: string, patch
         .filter(Boolean)
         .join("\n"),
     ),
-    carousel(contact.name, [card(contact)], [uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)]),
+    carousel(contact.name, [await card(ctx, contact)], [uri("網頁看聊天", webUrl(`/records/chats/${importId}`))!, ...MAIN_QUICK.slice(0, 4)]),
   ];
 }
 
@@ -190,7 +190,7 @@ export async function finalizeToContact(ctx: BotCtx, state: CollectState, contac
   const patch = fillableFrom(contact, extractContactFields(state.items.join("\n")).draft);
   const updated = Object.keys(patch).length > 0 ? await updateContact(ctx, contact.id, patch) : contact;
   await saveSession(ctx, null);
-  return summary(updated, state.items.length, importId, patch, false);
+  return summary(ctx, updated, state.items.length, importId, patch, false);
 }
 
 export async function finalizeNew(ctx: BotCtx, state: CollectState, name?: string): Promise<LineMessage[]> {
@@ -204,7 +204,7 @@ export async function finalizeNew(ctx: BotCtx, state: CollectState, name?: strin
   const contact = await createContact(ctx, { name: cleanName, ...patch } as ContactDraft);
   const importId = await saveForwardedChat(ctx, contact, state.items);
   await saveSession(ctx, null);
-  return summary(contact, state.items.length, importId, patch, true);
+  return summary(ctx, contact, state.items.length, importId, patch, true);
 }
 
 /** "是 王小明" while messages are parked. */

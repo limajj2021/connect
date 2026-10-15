@@ -9,7 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsInput } from "@/components/tags-input";
+import type { InteractionRow } from "@/lib/bot/data";
 import type { ContactRow } from "@/types/database";
+
+import { InteractionTimeline } from "./interaction-timeline";
 
 import { type MiniState, deleteMiniContact, saveMiniContact } from "../actions";
 import { MiniDone } from "../mini-done";
@@ -53,6 +56,7 @@ export function MiniContactForm({
   token,
   contact,
   prefillName,
+  interactions = [],
   tags: initialTags,
   tagSuggestions,
   returnTo,
@@ -60,6 +64,7 @@ export function MiniContactForm({
   token: string;
   contact: ContactRow | null;
   prefillName?: string;
+  interactions?: InteractionRow[];
   tags: string[];
   tagSuggestions: string[];
   returnTo?: string;
@@ -93,6 +98,8 @@ export function MiniContactForm({
         <h1 className="text-lg font-semibold">{contact ? `編輯 ${contact.name}` : "新增人脈"}</h1>
         <p className="text-xs text-muted-foreground">一次填好，不知道的留空就好</p>
       </header>
+
+      <InteractionTimeline interactions={interactions} />
 
       {state.error || deleted?.error ? (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error ?? deleted?.error}</p>

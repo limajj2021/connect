@@ -311,3 +311,67 @@ export async function saveSession(ctx: BotCtx, state: object | null) {
   );
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// Interactions — a lightweight "what we talked about" log, separate from the
+// durable `notes` field and from the heavier, possibly multi-contact
+// `meetings` table. Powers "上次聊到" on contact cards and search results,
+// and the timeline on the LIFF contact page.
+// ---------------------------------------------------------------------------
+
+export interface LastTouch {
+  occurred_on: string;
+  content: string;
+}
+
+export interface InteractionRow extends LastTouch {
+  id: string;
+}
+
+/** Reading/writing interactions only ever needs the owner-scoped client. */
+type InteractionCtx = Pick<BotCtx, "supabase" | "ownerId">;
+
+export async function createInteraction(ctx: InteractionCtx, contactId: string, content: string, occurredOn: string) {
+  const { error } = await ctx.supabase
+    .from("contact_interactions")
+    .insert({ owner_id: ctx.ownerId, contact_id: contactId, occurred_on: occurredOn, content: content.slice(0, 1000) });
+  if (error) throw error;
+}
+
+/** The most recent touch for each of the given contacts (missing ones just aren't in the map). */
+export async function lastTouchesFor(ctx: InteractionCtx, contactIds: string[]): Promise<Map<string, LastTouch>> {
+  const map = new Map<string, LastTouch>();
+  if (contactIds.length === 0) return map;
+  const { data, error } = await ctx.supabase
+    .from("contact_interactions")
+    .select("contact_id, occurred_on, content")
+    .eq("owner_id", ctx.ownerId)
+    .in("contact_id", contactIds)
+    .order("occurred_on", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  for (const row of data ?? []) {
+    const id = row.contact_id as string;
+    if (!map.has(id)) map.set(id, { occurred_on: row.occurred_on as string, content: row.content as string });
+  }
+  return map;
+}
+
+export async function lastTouchFor(ctx: InteractionCtx, contactId: string): Promise<LastTouch | null> {
+  return (await lastTouchesFor(ctx, [contactId])).get(contactId) ?? null;
+}
+
+/** Full timeline for one contact (newest first), for the LIFF contact page. */
+export async function listInteractions(ctx: InteractionCtx, contactId: string, limit = 50): Promise<InteractionRow[]> {
+  const { data, error } = await ctx.supabase
+    .from("contact_interactions")
+    .select("id, occurred_on, content")
+    .eq("owner_id", ctx.ownerId)
+    .eq("contact_id", contactId)
+    .order("occurred_on", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as InteractionRow[];
+}
