@@ -43,6 +43,7 @@ import {
   upcomingBirthdays,
   updateContact,
 } from "./data";
+import { handleBatchPostback } from "./batch-chat";
 import { extractDueDate, formatShortDate } from "./dates";
 import { birthdayBubble, buildDigest, festivalGroupBubble, otherReminderBubble } from "./digest";
 import { card, cards } from "./cards";
@@ -374,6 +375,9 @@ export async function handlePostback(ctx: BotCtx, data: string): Promise<LineMes
       };
       return runIntent(ctx, map[c ?? ""] ?? { kind: "help" });
     }
+    case "batch_ok":
+    case "batch_cancel":
+      return handleBatchPostback(ctx, a);
     case "stop":
       await saveSession(ctx, null);
       return [text("好，先這樣。", MAIN_QUICK)];

@@ -117,6 +117,34 @@ export function noticeCard(altText: string, title: string, subtitle: string | un
   return flex(altText, bubble({ title, subtitle, accent: "#2f5d50", buttons: actions.map((a, i) => button(a, i === 0 ? "secondary" : "link")) }));
 }
 
+/** A headline, a list of short lines (muted ones greyed out) and buttons. */
+export function listCard(opts: {
+  altText: string;
+  title: string;
+  subtitle?: string;
+  items: { text: string; muted?: boolean }[];
+  note?: string;
+  actions: (Action | null)[];
+}): LineMessage {
+  const shown = opts.items.slice(0, 40);
+  const body = [
+    ...shown.map((item) => t(item.text, { size: "sm", color: item.muted ? "#a0a0a0" : "#222222" })),
+    ...(opts.items.length > shown.length ? [t(`…還有 ${opts.items.length - shown.length} 位`, { size: "xs", color: "#8c8c8c" })] : []),
+    ...(opts.note ? [t(opts.note, { size: "xs", color: "#8c8c8c", margin: "md" })] : []),
+  ];
+  const actions = opts.actions.filter((a): a is Action => Boolean(a));
+  return flex(
+    opts.altText,
+    bubble({
+      title: opts.title,
+      subtitle: opts.subtitle,
+      accent: "#2f5d50",
+      body,
+      buttons: actions.map((a, i) => button(a, i === 0 ? "primary" : i === 1 ? "secondary" : "link")),
+    }),
+  );
+}
+
 export function carousel(altText: string, bubbles: Record<string, unknown>[], quick?: Action[]): LineMessage {
   if (bubbles.length === 1) return flex(altText, bubbles[0], quick);
   return flex(altText, { type: "carousel", contents: bubbles.slice(0, 12) }, quick);
@@ -373,6 +401,7 @@ export function helpMessages(): LineMessage[] {
         "",
         "💬 到好友聊天室長按訊息 →「轉傳」給我（可多選）→ 選是誰 → 存成他的聊天紀錄並補上電話、Email",
         "📷 傳名片、好友個人頁或好友名片的截圖 → 直接建檔",
+        "📷 傳「聊天」或「好友」列表截圖（可一次多張）→ 批量建檔",
         "（LINE 的「分享好友」機器人收不到，請改用轉傳或截圖）",
         "📄 傳 LINE／WhatsApp 匯出的聊天 .txt 或 .zip → 匯入聊天紀錄",
         "",

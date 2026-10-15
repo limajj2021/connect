@@ -8,9 +8,11 @@ import { isOcrConfigured, ocrImage } from "@/lib/ocr/ocr-space";
 import { createAdminClient, getOwnerUserId } from "@/lib/supabase/admin";
 import { taipeiToday } from "@/lib/format-date";
 
+import { type ImageSet, receiveShot } from "./batch-chat";
 import { importChatArchive, importChatFile } from "./chat-files";
+import { detectContactList } from "./contact-list";
 import { type BotCtx, loadSession } from "./data";
-import { extractFromOcr } from "./extract";
+import { extractFromOcr, parseLineDisplayName } from "./extract";
 import { appendToCollect } from "./forward";
 import { type FlowState, createFromScreenshot, handlePostback, handleText } from "./handlers";
 import { parseIntent } from "./intent";
@@ -22,17 +24,22 @@ export interface LineEvent {
   webhookEventId?: string;
   deliveryContext?: { isRedelivery?: boolean };
   source?: { type: string; userId?: string };
-  message?: { id: string; type: string; text?: string; fileName?: string; fileSize?: number };
+  message?: { id: string; type: string; text?: string; fileName?: string; fileSize?: number; imageSet?: ImageSet };
   postback?: { data: string };
 }
 
-async function handleImage(ctx: BotCtx, messageId: string): Promise<LineMessage[]> {
+async function handleImage(ctx: BotCtx, messageId: string, imageSet?: ImageSet): Promise<LineMessage[]> {
   if (!isOcrConfigured()) {
     return [text("圖片辨識還沒開啟（需要設定免費的 OCR 金鑰）。先直接打字給我吧，例如：\n新增 王小明 台積電 經理 0912345678")];
   }
+  // Several images sent at once are collected into one batch.
+  const set = imageSet && imageSet.total > 1 ? imageSet : undefined;
   const image = await getMessageContent(messageId);
   const ocr = await ocrImage(image);
-  if (!ocr.ok) return [text(`圖片辨識失敗：${ocr.error}\n可以改用打字：新增 名字 公司 電話…`, MAIN_QUICK)];
+  if (!ocr.ok) {
+    if (set) return receiveShot(ctx, messageId, [], set); // still counts toward the set
+    return [text(`圖片辨識失敗：${ocr.error}\n可以改用打字：新增 名字 公司 電話…`, MAIN_QUICK)];
+  }
 
   const state = await loadSession<FlowState>(ctx);
   if (state?.flow === "collect") {
@@ -40,7 +47,12 @@ async function handleImage(ctx: BotCtx, messageId: string): Promise<LineMessage[
     return appendToCollect(ctx, state, [`［截圖］${ocr.text}`]);
   }
 
+  // A chat list / friend list screenshot: everyone in it, in one go.
+  const list = detectContactList(ocr.lines);
+  if (list) return receiveShot(ctx, messageId, list.names.map(parseLineDisplayName), set);
+
   const draft = extractFromOcr(ocr.text);
+  if (set) return receiveShot(ctx, messageId, draft.name ? [draft] : [], set);
   const found = Object.keys(draft).filter((k) => k !== "notes").length;
   if (found === 0) {
     return [text(`我讀到這些字，但認不出聯絡資料：\n${ocr.text.slice(0, 300)}\n\n可以告訴我這是誰嗎？例如：新增 王小明 …`, MAIN_QUICK)];
@@ -79,7 +91,7 @@ async function respond(ctx: BotCtx, event: LineEvent): Promise<LineMessage[]> {
       return handleText(ctx, message.text ?? "");
     case "image":
       await showLoading(ctx.lineUserId, 30);
-      return handleImage(ctx, message.id);
+      return handleImage(ctx, message.id, message.imageSet);
     case "file": {
       const name = message.fileName ?? "chat.txt";
       const lower = name.toLowerCase();

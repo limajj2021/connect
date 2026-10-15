@@ -224,6 +224,7 @@ export function looksLikeLineProfile(ocrText: string): boolean {
 /**
  * Splits a LINE display name the way people actually write them in Taiwan:
  * "Kenny吳副 @印度班加*" → name "Kenny 吳副", tag "印度班加";
+ * "Alex黃天倫*達興實業" → name "Alex 黃天倫", tag "達興實業";
  * "王小明-台積電" → name "王小明", company "台積電".
  */
 export function parseLineDisplayName(raw: string): ContactDraft {
@@ -231,10 +232,11 @@ export function parseLineDisplayName(raw: string): ContactDraft {
   if (!displayName) return {};
   const draft: ContactDraft = { line_display_name: displayName };
 
-  const [beforeAt, ...afterAt] = displayName.split("@");
+  // "@" or an inner "*" separates the name from a group/title note.
+  const [beforeAt, ...afterAt] = displayName.split(/[@*]/);
   let namePart = beforeAt.trim();
   const tags: string[] = [];
-  const tag = afterAt.join("@").replace(DECORATION_RE, "").trim();
+  const tag = afterAt.join(" ").replace(DECORATION_RE, "").trim();
   if (tag) tags.push(tag);
 
   // "王小明-台積電" / "王小明｜業務" / "王小明 (台積電)"

@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { OcrLine } from "@/lib/bot/contact-list";
+
 const OCR_SPACE_URL = process.env.OCR_SPACE_URL ?? "https://api.ocr.space/parse/image";
 // The free OCR.space tier rejects files over 1 MB.
 const MAX_BYTES = 1024 * 1024;
@@ -28,7 +30,27 @@ async function fitImage(image: ArrayBuffer): Promise<{ data: Buffer; mime: strin
   return { data: input, mime: "image/jpeg" };
 }
 
-export type OcrResult = { ok: true; text: string } | { ok: false; error: string };
+export type OcrResult = { ok: true; text: string; lines: OcrLine[] } | { ok: false; error: string };
+
+interface OverlayLine {
+  LineText?: string;
+  MinTop?: number;
+  MaxHeight?: number;
+  Words?: { Left: number; Width: number }[];
+}
+
+/** Line positions (needed to tell a chat/friend list apart from a single card). */
+function toLines(overlay: OverlayLine[]): OcrLine[] {
+  return overlay
+    .filter((l) => l.LineText && l.Words && l.Words.length > 0)
+    .map((l) => ({
+      text: l.LineText!.trim(),
+      top: l.MinTop ?? 0,
+      height: l.MaxHeight ?? 0,
+      left: Math.min(...l.Words!.map((w) => w.Left)),
+      right: Math.max(...l.Words!.map((w) => w.Left + w.Width)),
+    }));
+}
 
 export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
   const apiKey = process.env.OCR_SPACE_API_KEY;
@@ -41,6 +63,7 @@ export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
   form.set("language", "auto");
   form.set("scale", "true");
   form.set("detectOrientation", "true");
+  form.set("isOverlayRequired", "true");
 
   try {
     const res = await fetch(OCR_SPACE_URL, {
@@ -53,14 +76,15 @@ export async function ocrImage(image: ArrayBuffer): Promise<OcrResult> {
     const json = (await res.json()) as {
       IsErroredOnProcessing?: boolean;
       ErrorMessage?: string | string[];
-      ParsedResults?: { ParsedText?: string }[];
+      ParsedResults?: { ParsedText?: string; TextOverlay?: { Lines?: OverlayLine[] } }[];
     };
     if (json.IsErroredOnProcessing) {
       const message = Array.isArray(json.ErrorMessage) ? json.ErrorMessage.join(" ") : json.ErrorMessage;
       return { ok: false, error: message || "OCR 辨識失敗" };
     }
     const text = (json.ParsedResults ?? []).map((r) => r.ParsedText ?? "").join("\n").trim();
-    return text ? { ok: true, text } : { ok: false, error: "圖片裡沒有讀到文字" };
+    const lines = toLines((json.ParsedResults ?? []).flatMap((r) => r.TextOverlay?.Lines ?? []));
+    return text ? { ok: true, text, lines } : { ok: false, error: "圖片裡沒有讀到文字" };
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.name === "TimeoutError" ? "OCR 逾時" : "OCR 服務連線失敗" };
   }

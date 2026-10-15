@@ -19,3 +19,10 @@ export const contactFormUrl = (contactId: string) => miniUrl(`/contacts/${contac
 export const newContactFormUrl = (prefillName?: string) =>
   miniUrl("/contacts/new", "contact:new", prefillName ? { name: prefillName } : {});
 export const newTaskFormUrl = (contactId?: string) => miniUrl("/tasks/new", "task:new", contactId ? { contact: contactId } : {});
+export const batchFormUrl = () => miniUrl("/batch", "batch");
+
+/** The LIFF contact list (needs the LIFF app; it authenticates by LINE login). */
+export function contactListUrl(): string | null {
+  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+  return liffId ? `https://liff.line.me/${liffId}/contacts` : null;
+}

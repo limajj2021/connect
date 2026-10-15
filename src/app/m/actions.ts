@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { clearShots, createBatch, loadBatch } from "@/lib/bot/batch";
 import { parseContactFormData } from "@/lib/contacts/form";
 import { setContactTags } from "@/lib/mini/tags";
 import { verifyScope } from "@/lib/mini/token";
@@ -118,4 +119,27 @@ export async function saveMiniTask(token: string, _prev: MiniState, formData: Fo
   revalidatePath("/reminders");
   refreshWeb(contactId || undefined);
   return { ok: true, name: title };
+}
+
+/** /m/batch: create the people picked from list screenshots (names as edited). */
+export async function saveMiniBatch(token: string, _prev: MiniState, formData: FormData): Promise<MiniState> {
+  if (!verifyScope(token, "batch")) return { error: "連結已失效，請回 LINE 重新開啟" };
+  const lineUserId = process.env.LINE_OWNER_USER_ID;
+  if (!lineUserId) return { error: "LINE 尚未設定" };
+  const ctx = { supabase: createAdminClient(), ownerId: await getOwnerUserId(), lineUserId };
+
+  const picked = new Set(formData.getAll("pick").map(String));
+  const entries = (await loadBatch(ctx)).filter((e) => picked.has(e.key));
+  if (entries.length === 0) return { error: "請至少勾選一位（或這批已處理完）" };
+  const drafts = entries.map((e) => {
+    const name = String(formData.get(`name:${e.key}`) ?? "").trim().slice(0, 100);
+    return { ...e.draft, name: name || e.draft.name };
+  });
+  if (drafts.some((d) => !d.name)) return { error: "每位都需要名字" };
+
+  const tags = formData.getAll("industries").map(String);
+  const created = await createBatch(ctx, drafts, tags);
+  await clearShots(ctx);
+  refreshWeb();
+  return { ok: true, name: String(created.length) };
 }

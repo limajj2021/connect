@@ -107,3 +107,13 @@ describe("international numbers in chats", () => {
     expect(extractFromCommand("X LINE ID is kenny_88").line_id).toBe("kenny_88");
   });
 });
+
+describe("parseLineDisplayName with an inner *", () => {
+  it("splits the name from the company after *", async () => {
+    const { parseLineDisplayName } = await import("./extract");
+    const draft = parseLineDisplayName("Alex黃天倫*達興實業");
+    expect(draft.name).toBe("Alex 黃天倫");
+    expect(draft.line_display_name).toBe("Alex黃天倫*達興實業");
+    expect(draft.company).toBe("達興實業");
+  });
+});
